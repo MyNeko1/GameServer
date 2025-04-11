@@ -212,7 +212,7 @@ wss.on('connection', (ws) => {
       player.hp = Math.min(100, player.hp + data.amount);
       queueUpdate({ type: 'updatePlayer', id, player });
     } else if (data.type === 'arrow') {
-      queueUpdate({ type: 'arrow', x: data.x, y: data.y, targetX: data.targetX, targetY: data.targetY });
+      queueUpdate({ type: 'arrow', x: data.x, y: data.y, targetX: data.targetX, targetY: data.targetY, shooterId: data.shooterId });
     }
   });
   ws.on('close', () => {
