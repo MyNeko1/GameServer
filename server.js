@@ -53,9 +53,31 @@ function nearby(x1, y1, x2, y2) {
   return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && (x1 != x2 || y1 != y2);
 }
 
+function generateInitialTiles() {
+  for (let x = -50; x <= 50; x++) {
+    for (let y = -50; y <= 50; y++) {
+      getCell(x, y);
+    }
+  }
+}
+
+generateInitialTiles();
+
+const usedColors = new Set();
+function getUniqueColor() {
+  const colors = ['#FF5555', '#55FF55', '#5555FF', '#FFFF55', '#FF55FF', '#55FFFF', '#FFAA55', '#55FFAA'];
+  for (let color of colors) {
+    if (!usedColors.has(color)) {
+      usedColors.add(color);
+      return color;
+    }
+  }
+  return '#' + Math.floor(Math.random()*16777215).toString(16);
+}
+
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
-  let player = { x: 0, y: 0, blocks: 0, name: '' };
+  let player = { x: 0, y: 0, blocks: 0, name: '', color: getUniqueColor() };
 
   if (getCell(player.x, player.y) == 1) {
     let found = false;
@@ -112,6 +134,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    usedColors.delete(player.color);
     players.delete(id);
     broadcast({ type: 'leave', id });
   });
