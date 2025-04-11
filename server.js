@@ -18,7 +18,7 @@ const wss = new WebSocket.Server({
     threshold: 1024
   }
 });
-let tiles = new Map();
+let tiles = [];
 let players = new Map();
 let seed = Math.random() * 1000;
 let updatesBuffer = [];
@@ -47,16 +47,17 @@ function grad(h, x, y, z) {
 }
 const perlin = new Noise();
 function getCell(x, y) {
-  let key = x + "," + y;
-  if (!tiles.has(key)) {
+  if (!tiles[x]) tiles[x] = [];
+  if (tiles[x][y] === undefined) {
     let scale = 0.2;
     let val = perlin.noise(x * scale + seed, y * scale + seed, 0);
-    tiles.set(key, (val + 1) / 2 < 0.6 ? 0 : 1);
+    tiles[x][y] = (val + 1) / 2 < 0.6 ? 0 : 1;
   }
-  return tiles.get(key);
+  return tiles[x][y];
 }
 function setCell(x, y, val) {
-  tiles.set(x + "," + y, val);
+  if (!tiles[x]) tiles[x] = [];
+  tiles[x][y] = val;
 }
 function nearby(x1, y1, x2, y2) {
   return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && (x1 != x2 || y1 != y2);
@@ -90,12 +91,18 @@ setInterval(() => {
   if (updatesBuffer.length === 0) return;
   const updates = [...updatesBuffer];
   updatesBuffer = [];
+  const groupedUpdates = new Map();
+  updates.forEach(update => {
+    const key = JSON.stringify({ type: update.type, id: update.id, x: update.x, y: update.y });
+    groupedUpdates.set(key, update);
+  });
+  const deduplicatedUpdates = Array.from(groupedUpdates.values());
   wss.clients.forEach((client) => {
     if (client.readyState !== WebSocket.OPEN) return;
     const playerId = client.playerId;
     const player = players.get(playerId);
     if (!player) return;
-    const visibleUpdates = updates.filter((update) => {
+    const visibleUpdates = deduplicatedUpdates.filter((update) => {
       if (update.type === 'updatePlayer' || update.type === 'join') {
         const otherPlayer = update.type === 'join' ? update.player : players.get(update.id);
         return isInRange(player.x, player.y, otherPlayer.x, otherPlayer.y, 15);
@@ -134,7 +141,15 @@ wss.on('connection', (ws) => {
     }
   }
   players.set(id, player);
-  ws.send(JSON.stringify({ type: 'init', id, players: Object.fromEntries(players), tiles: Object.fromEntries(tiles) }));
+  const tilesData = {};
+  for (let x = -50; x <= 50; x++) {
+    for (let y = -50; y <= 50; y++) {
+      if (tiles[x] && tiles[x][y] !== undefined) {
+        tilesData[x + "," + y] = tiles[x][y];
+      }
+    }
+  }
+  ws.send(JSON.stringify({ type: 'init', id, players: Object.fromEntries(players), tiles: tilesData }));
   queueUpdate({ type: 'join', id, player });
   ws.on('message', (message) => {
     const data = JSON.parse(message);
