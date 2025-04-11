@@ -72,10 +72,10 @@
     .dpad {
       position: absolute;
       bottom: 20px;
-      right: 20px;
+      left: 20px;
       display: none;
-      grid-template-columns: repeat(3, 40px);
-      grid-template-rows: repeat(3, 40px);
+      grid-template-columns: repeat(3, 50px);
+      grid-template-rows: repeat(3, 50px);
       gap: 5px;
     }
     .dpad-button {
@@ -83,9 +83,8 @@
       border: 1px solid white;
       border-radius: 5px;
       color: white;
-      font-size: 16px;
-      text-align: center;
-      line-height: 40px;
+      font-size: 20px; 
+      line-height: 50px;
       cursor: pointer;
       user-select: none;
       touch-action: manipulation;
@@ -128,7 +127,7 @@
       padding: 2px;
       border-radius: 3px;
     }
-    @media (max-width: 600px) {
+    @media (max-width: 600px), (orientation: landscape) {
       .dpad {
         display: grid;
       }
@@ -148,19 +147,35 @@
       .inventory-slot .count {
         font-size: 8px;
       }
+      .dpad {
+        bottom: 20px;
+        left: 20px;
+      }
+    }
+    @media (orientation: landscape) {
+      .dpad {
+        bottom: 20px;
+        left: 20px;
+      }
+      .inventory {
+        bottom: 10px;
+      }
+      .chat {
+        bottom: 70px;
+      }
     }
   </style>
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="сюда впиши имя" maxlength="10">
+    <input type="text" id="nameInput" placeholder="впиши имя" maxlength="10">
     <button onclick="joinGame()">играть</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
     <div class="inv" id="invCount">HP: 100</div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
+      <input type="text" id="chatInput" placeholder="начатьбазарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="dpad" id="dpad">
@@ -242,7 +257,7 @@
               }
             }, 10000);
           } else if (update.type === 'arrow') {
-            arrows.push({ x: update.x, y: update.y, targetX: update.targetX, targetY: update.targetY });
+            arrows.push({ x: update.x, y: update.y, targetX: update.targetX, targetY: update.targetY, startTime: Date.now() });
           }
         });
         draw();
@@ -311,16 +326,14 @@
       arrows = arrows.filter(arrow => {
         const dx = arrow.targetX - arrow.x;
         const dy = arrow.targetY - arrow.y;
-        if (Math.abs(dx) <= 0.1 && Math.abs(dy) <= 0.1) {
-          return false;
-        }
+        const elapsed = (Date.now() - arrow.startTime) / 1000;
+        if (elapsed > 10) return false; // Исчезает через 10 секунд
+        if (Math.abs(dx) <= 0.1 && Math.abs(dy) <= 0.1) return false;
         arrow.x += dx * 0.2;
         arrow.y += dy * 0.2;
         const wx = Math.round(arrow.x);
         const wy = Math.round(arrow.y);
-        if (tiles.get(wx + "," + wy) == 1) {
-          return false;
-        }
+        if (tiles.get(wx + "," + wy) == 1) return false; // Исчезает при столкновении со стеной
         for (let [id, player] of players) {
           if (Math.abs(player.x - wx) <= 0.5 && Math.abs(player.y - wy) <= 0.5) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
@@ -372,13 +385,17 @@
         }
       }
       for (let arrow of arrows) {
-        let px = (arrow.x - sx) * cellPx + cellPx / 2;
-        let py = (arrow.y - sy) * cellPx + cellPx / 2;
-        if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
-          ctx.fillStyle = "yellow";
+        let px1 = (arrow.x - sx) * cellPx + cellPx / 2;
+        let py1 = (arrow.y - sy) * cellPx + cellPx / 2;
+        let px2 = (arrow.x + (arrow.targetX - arrow.x) * 0.2 - sx) * cellPx + cellPx / 2;
+        let py2 = (arrow.y + (arrow.targetY - arrow.y) * 0.2 - sy) * cellPx + cellPx / 2;
+        if (px1 >= 0 && px1 <= canvasPx && py1 >= 0 && py1 <= canvasPx) {
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(px, py, 3, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.moveTo(px1, py1);
+          ctx.lineTo(px2, py2);
+          ctx.stroke();
         }
       }
       for (let [id, player] of players) {
