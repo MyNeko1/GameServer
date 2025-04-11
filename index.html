@@ -166,11 +166,11 @@
         let px = (player.x - sx) * cellPx + cellPx / 2;
         let py = (player.y - sy) * cellPx + cellPx / 2;
         if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
-          ctx.fillStyle = id === myId ? "white" : "red";
+          ctx.fillStyle = player.color;
           ctx.font = "26px monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(id === myId ? "@" : "X", px, py);
+          ctx.fillText("@", px, py);
           if (player.name) {
             ctx.font = "12px monospace";
             ctx.fillText(player.name, px, py - 20);
