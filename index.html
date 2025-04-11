@@ -152,20 +152,26 @@
         bottom: 20px;
         left: 20px;
       }
-    }
-    @media (orientation: landscape) {
+      .chat {
+        bottom: 70px;
+      }
       .inventory {
         bottom: 10px;
       }
+    }
+    @media (min-width: 601px) {
       .chat {
-        bottom: 70px;
+        bottom: 100px; /* Поднимаем чат выше на ПК */
+      }
+      .inventory {
+        bottom: 40px; /* Поднимаем инвентарь выше на ПК */
       }
     }
   </style>
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="сюда впиши имя" maxlength="10">
+    <input type="text" id="nameInput" placeholder="как зовут путник?" maxlength="10">
     <button onclick="proceedToDeviceSelect()">играть</button>
   </div>
   <div id="deviceSelect">
@@ -287,11 +293,11 @@
     function selectDevice(type) {
       deviceType = type;
       if (type === 'pc') {
-        canvasPx = 600; // Увеличиваем размер для ПК
+        canvasPx = 600;
         cellPx = canvasPx / gridSize;
         joystick.style.display = 'none';
       } else {
-        canvasPx = 450; // Размер для мобильных
+        canvasPx = 450;
         cellPx = canvasPx / gridSize;
         joystick.style.display = 'block';
       }
@@ -324,10 +330,10 @@
       if (!me || !joystickActive) return;
       let nextX = me.x;
       let nextY = me.y;
-      if (joystickDirection.y < -0.3) nextY--; // Вверх
-      if (joystickDirection.y > 0.3) nextY++; // Вниз
-      if (joystickDirection.x < -0.3) nextX--; // Влево
-      if (joystickDirection.x > 0.3) nextX++; // Вправо
+      if (joystickDirection.y < -0.3) nextY--;
+      if (joystickDirection.y > 0.3) nextY++;
+      if (joystickDirection.x < -0.3) nextX--;
+      if (joystickDirection.x > 0.3) nextX++;
       if (nextX !== me.x || nextY !== me.y) {
         if (nearby(me.x, me.y, nextX, nextY, 1) && getCell(nextX, nextY) === 0) {
           ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
@@ -554,13 +560,15 @@
       }
     });
     document.addEventListener('keydown', (e) => {
+      if (['w', 'W', 's', 'S', 'a', 'A', 'd', 'D'].includes(e.key)) {
+        e.preventDefault(); // Предотвращаем стандартное поведение (например, прокрутку)
+        keysPressed.add(e.key);
+      }
       if (e.key === 'q' || e.key === 'Q') {
         document.getElementById('chatInput').focus();
       }
-      if (['w', 'W', 's', 'S', 'a', 'A', 'd', 'D'].includes(e.key)) {
-        keysPressed.add(e.key);
-      }
       if (['1', '2', '3', '4', '5'].includes(e.key)) {
+        e.preventDefault();
         selectedSlot = parseInt(e.key) - 1;
         document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
         document.querySelector(`.inventory-slot[data-slot="${selectedSlot}"]`).classList.add('selected');
