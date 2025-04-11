@@ -83,7 +83,8 @@
       border: 1px solid white;
       border-radius: 5px;
       color: white;
-      font-size: 20px; 
+      font-size: 20px;
+      text-align: center;
       line-height: 50px;
       cursor: pointer;
       user-select: none;
@@ -168,14 +169,14 @@
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="впиши имя" maxlength="10">
+    <input type="text" id="nameInput" placeholder="сюда впиши имя" maxlength="10">
     <button onclick="joinGame()">играть</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
     <div class="inv" id="invCount">HP: 100</div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="начатьбазарить" maxlength="50">
+      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="dpad" id="dpad">
@@ -257,7 +258,17 @@
               }
             }, 10000);
           } else if (update.type === 'arrow') {
-            arrows.push({ x: update.x, y: update.y, targetX: update.targetX, targetY: update.targetY, startTime: Date.now() });
+            arrows.push({
+              x: update.x,
+              y: update.y,
+              targetX: update.targetX,
+              targetY: update.targetY,
+              startTime: Date.now(),
+              shooterId: update.shooterId,
+              currentX: update.x,
+              currentY: update.y,
+              path: calculatePath(update.x, update.y, update.targetX, update.targetY)
+            });
           }
         });
         draw();
@@ -314,6 +325,23 @@
         }
       }
     }
+    function calculatePath(startX, startY, targetX, targetY) {
+      let path = [];
+      let dx = targetX - startX;
+      let dy = targetY - startY;
+      let steps = Math.max(Math.abs(dx), Math.abs(dy));
+      if (steps === 0) return path;
+      let xStep = dx / steps;
+      let yStep = dy / steps;
+      let x = startX;
+      let y = startY;
+      for (let i = 0; i < steps; i++) {
+        x += xStep;
+        y += yStep;
+        path.push({ x: Math.round(x), y: Math.round(y) });
+      }
+      return path;
+    }
     setInterval(() => {
       if (keysPressed.size > 0) moveWithKeys();
       updateArrows();
@@ -324,18 +352,16 @@
       let sx = me.x - Math.floor(gridSize / 2);
       let sy = me.y - Math.floor(gridSize / 2);
       arrows = arrows.filter(arrow => {
-        const dx = arrow.targetX - arrow.x;
-        const dy = arrow.targetY - arrow.y;
         const elapsed = (Date.now() - arrow.startTime) / 1000;
         if (elapsed > 10) return false; // Исчезает через 10 секунд
-        if (Math.abs(dx) <= 0.1 && Math.abs(dy) <= 0.1) return false;
-        arrow.x += dx * 0.2;
-        arrow.y += dy * 0.2;
-        const wx = Math.round(arrow.x);
-        const wy = Math.round(arrow.y);
-        if (tiles.get(wx + "," + wy) == 1) return false; // Исчезает при столкновении со стеной
+        if (arrow.path.length === 0) return false; // Достиг цели
+        let nextPos = arrow.path.shift();
+        arrow.currentX = nextPos.x;
+        arrow.currentY = nextPos.y;
+        if (tiles.get(arrow.currentX + "," + arrow.currentY) == 1) return false; // Столкновение со стеной
         for (let [id, player] of players) {
-          if (Math.abs(player.x - wx) <= 0.5 && Math.abs(player.y - wy) <= 0.5) {
+          if (id === arrow.shooterId) continue; // Не наносит урон стреляющему
+          if (Math.abs(player.x - arrow.currentX) <= 0.5 && Math.abs(player.y - arrow.currentY) <= 0.5) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
             return false;
           }
@@ -385,10 +411,15 @@
         }
       }
       for (let arrow of arrows) {
-        let px1 = (arrow.x - sx) * cellPx + cellPx / 2;
-        let py1 = (arrow.y - sy) * cellPx + cellPx / 2;
-        let px2 = (arrow.x + (arrow.targetX - arrow.x) * 0.2 - sx) * cellPx + cellPx / 2;
-        let py2 = (arrow.y + (arrow.targetY - arrow.y) * 0.2 - sy) * cellPx + cellPx / 2;
+        let px1 = (arrow.currentX - sx) * cellPx + cellPx / 2;
+        let py1 = (arrow.currentY - sy) * cellPx + cellPx / 2;
+        let px2 = px1;
+        let py2 = py1;
+        if (arrow.path.length > 0) {
+          let nextPos = arrow.path[0];
+          px2 = (nextPos.x - sx) * cellPx + cellPx / 2;
+          py2 = (nextPos.y - sy) * cellPx + cellPx / 2;
+        }
         if (px1 >= 0 && px1 <= canvasPx && py1 >= 0 && py1 <= canvasPx) {
           ctx.strokeStyle = "white";
           ctx.lineWidth = 2;
@@ -489,7 +520,7 @@
           ws.send(JSON.stringify({ type: 'break', x: targetX, y: targetY }));
         }
       } else if (selectedSlot === 3) { // Лук
-        ws.send(JSON.stringify({ type: 'arrow', x: me.x, y: me.y, targetX, targetY }));
+        ws.send(JSON.stringify({ type: 'arrow', x: me.x, y: me.y, targetX, targetY, shooterId: myId }));
       } else if (selectedSlot === 4) { // Еда
         ws.send(JSON.stringify({ type: 'heal', amount: 10 }));
       }
