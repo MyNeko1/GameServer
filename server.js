@@ -84,6 +84,25 @@ function getUniqueColor() {
   }
   return '#' + Math.floor(Math.random()*16777215).toString(16);
 }
+function respawnPlayer(player) {
+  player.x = 0;
+  player.y = 0;
+  if (getCell(player.x, player.y) == 1) {
+    let found = false;
+    for (let r = 1; r < 100 && !found; r++) {
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if ((Math.abs(dx) == r || Math.abs(dy) == r) && getCell(player.x + dx, player.y + dy) == 0) {
+            player.x += dx;
+            player.y += dy;
+            found = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+}
 function queueUpdate(message) {
   updatesBuffer.push(message);
 }
@@ -128,21 +147,7 @@ wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
   ws.playerId = id;
   let player = { x: 0, y: 0, blocks: 0, hp: 100, name: '', color: getUniqueColor() };
-  if (getCell(player.x, player.y) == 1) {
-    let found = false;
-    for (let r = 1; r < 100 && !found; r++) {
-      for (let dy = -r; dy <= r && !found; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if ((Math.abs(dx) == r || Math.abs(dy) == r) && getCell(player.x + dx, player.y + dy) == 0) {
-            player.x += dx;
-            player.y += dy;
-            found = true;
-            break;
-          }
-        }
-      }
-    }
-  }
+  respawnPlayer(player);
   players.set(id, player);
   const tilesData = {};
   for (let x = -50; x <= 50; x++) {
@@ -192,19 +197,7 @@ wss.on('connection', (ws) => {
         target.hp = Math.max(0, target.hp - data.damage);
         if (target.hp === 0) {
           target.hp = 100;
-          let found = false;
-          for (let r = 1; r < 100 && !found; r++) {
-            for (let dy = -r; dy <= r && !found; dy++) {
-              for (let dx = -r; dx <= r; dx++) {
-                if ((Math.abs(dx) == r || Math.abs(dy) == r) && getCell(target.x + dx, target.y + dy) == 0) {
-                  target.x += dx;
-                  target.y += dy;
-                  found = true;
-                  break;
-                }
-              }
-            }
-          }
+          respawnPlayer(target);
         }
         queueUpdate({ type: 'updatePlayer', id: data.targetId, player: target });
       }
