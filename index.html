@@ -97,7 +97,7 @@
       <button class="btn" id="breakMode">Ломание</button>
     </div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="Введите сообщение" maxlength="50">
+      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
   </div>
@@ -107,19 +107,15 @@
     canvas.width = canvasPx;
     canvas.height = canvasPx;
     let ctx = canvas.getContext("2d");
-
     let tiles = new Map();
     let players = new Map();
-    let messages = new Map(); // {playerId: [{text, timestamp}]}
+    let messages = new Map();
     let myId = null;
     let mode = "move";
-
     const ws = new WebSocket('wss://' + window.location.hostname);
-
     ws.onopen = () => {
       console.log('Connected to server');
     };
-
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
       if (data.type === 'init') {
@@ -155,15 +151,12 @@
         draw();
       }
     };
-
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
-
     ws.onclose = () => {
       console.log('WebSocket connection closed');
     };
-
     function joinGame() {
       const name = document.getElementById('nameInput').value.trim();
       if (name) {
@@ -172,19 +165,15 @@
         document.getElementById('game').style.display = 'block';
       }
     }
-
     function nearby(x1, y1, x2, y2) {
       return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && (x1 != x2 || y1 != y2);
     }
-
     function draw() {
       ctx.clearRect(0, 0, canvasPx, canvasPx);
       const me = players.get(myId);
       if (!me) return;
-
       let sx = me.x - Math.floor(gridSize / 2);
       let sy = me.y - Math.floor(gridSize / 2);
-
       for (let ty = 0; ty < gridSize; ty++) {
         for (let tx = 0; tx < gridSize; tx++) {
           let wx = sx + tx, wy = sy + ty;
@@ -202,7 +191,6 @@
           }
         }
       }
-
       for (let [id, player] of players) {
         let px = (player.x - sx) * cellPx + cellPx / 2;
         let py = (player.y - sy) * cellPx + cellPx / 2;
@@ -218,7 +206,6 @@
           }
         }
       }
-
       for (let [id, player] of players) {
         let px = (player.x - sx) * cellPx + cellPx / 2;
         let py = (player.y - sy) * cellPx + cellPx / 2;
@@ -233,14 +220,11 @@
           }
         }
       }
-
       document.getElementById("invCount").textContent = "Клетки: " + me.blocks;
     }
-
     function canvasClick(e) {
       const me = players.get(myId);
       if (!me) return;
-
       let rect = canvas.getBoundingClientRect();
       let x = e.clientX - rect.left;
       let y = e.clientY - rect.top;
@@ -248,7 +232,6 @@
       let ty = Math.floor(y / cellPx);
       let targetX = me.x - Math.floor(gridSize / 2) + tx;
       let targetY = me.y - Math.floor(gridSize / 2) + ty;
-
       if (nearby(me.x, me.y, targetX, targetY)) {
         if (mode == "move") {
           ws.send(JSON.stringify({ type: 'move', x: targetX, y: targetY }));
@@ -259,7 +242,6 @@
         }
       }
     }
-
     let btns = {
       move: document.getElementById("moveMode"),
       build: document.getElementById("buildMode"),
@@ -274,7 +256,6 @@
     btns.move.onclick = () => switchMode("move");
     btns.build.onclick = () => switchMode("build");
     btns.break.onclick = () => switchMode("break");
-
     document.getElementById('sendChat').addEventListener('click', () => {
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
@@ -283,7 +264,6 @@
         input.value = '';
       }
     });
-
     canvas.onclick = canvasClick;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
