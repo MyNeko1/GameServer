@@ -21,29 +21,6 @@
       touch-action: none;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
-    .buttons {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .btn {
-      background: #333;
-      color: white;
-      border: 1px solid white;
-      padding: 8px 12px;
-      cursor: pointer;
-      font-size: 14px;
-      user-select: none;
-      touch-action: manipulation;
-      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
-    }
-    .btn.active {
-      background: #666;
-      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
-    }
     .inv {
       position: absolute;
       top: 10px;
@@ -69,7 +46,7 @@
     }
     .chat {
       position: absolute;
-      bottom: 10px;
+      bottom: 70px;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -82,6 +59,7 @@
       padding: 5px;
       font-size: 14px;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+      width: 200px;
     }
     #sendChat {
       background: #333;
@@ -115,26 +93,72 @@
     .dpad-button:active {
       background: rgba(255, 255, 255, 0.5);
     }
+    .inventory {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+    }
+    .inventory-slot {
+      width: 50px;
+      height: 50px;
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid white;
+      border-radius: 5px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 12px;
+      text-align: center;
+      cursor: pointer;
+      position: relative;
+    }
+    .inventory-slot.selected {
+      border-color: yellow;
+      background: rgba(255, 255, 255, 0.4);
+    }
+    .inventory-slot .count {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      font-size: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 2px;
+      border-radius: 3px;
+    }
     @media (max-width: 600px) {
       .dpad {
         display: grid;
+      }
+      #chatInput {
+        width: 150px;
+        font-size: 12px;
+      }
+      #sendChat {
+        padding: 5px;
+        font-size: 12px;
+      }
+      .inventory-slot {
+        width: 40px;
+        height: 40px;
+        font-size: 10px;
+      }
+      .inventory-slot .count {
+        font-size: 8px;
       }
     }
   </style>
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="сюда имя впиши" maxlength="10">
+    <input type="text" id="nameInput" placeholder="сюда впиши имя" maxlength="10">
     <button onclick="joinGame()">играть</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
-    <div class="inv" id="invCount">Клетки: 0</div>
-    <div class="buttons">
-      <button class="btn active" id="moveMode">Движение</button>
-      <button class="btn" id="buildMode">Строительство</button>
-      <button class="btn" id="breakMode">Ломание</button>
-    </div>
+    <div class="inv" id="invCount">HP: 100</div>
     <div class="chat">
       <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
@@ -150,6 +174,13 @@
       <div class="dpad-button" data-dir="s">↓</div>
       <div class="dpad-button" data-dir="se">↘</div>
     </div>
+    <div class="inventory" id="inventory">
+      <div class="inventory-slot" data-slot="0"><span>Блоки</span><span class="count">0</span></div>
+      <div class="inventory-slot" data-slot="1">Меч</div>
+      <div class="inventory-slot" data-slot="2">Кирка</div>
+      <div class="inventory-slot" data-slot="3">Лук</div>
+      <div class="inventory-slot" data-slot="4">Еда</div>
+    </div>
   </div>
   <script>
     let gridSize = 15, cellPx = 30, canvasPx = gridSize * cellPx;
@@ -161,13 +192,17 @@
     let tiles = new Map();
     let players = new Map();
     let messages = new Map();
+    let arrows = [];
     let myId = null;
-    let mode = "move";
-    const modes = ["move", "build", "break"];
-    let currentModeIndex = 0;
-    let targetPos = null;
-    let isMoving = false;
     let keysPressed = new Set();
+    let selectedSlot = null;
+    let inventory = [
+      { type: "blocks", count: 0 },
+      { type: "sword" },
+      { type: "pickaxe" },
+      { type: "bow" },
+      { type: "food" }
+    ];
     const ws = new WebSocket('wss://' + window.location.hostname);
     ws.onopen = () => {
       console.log('Connected to server');
@@ -178,6 +213,7 @@
         myId = data.id;
         players = new Map(Object.entries(data.players));
         tiles = new Map(Object.entries(data.tiles));
+        inventory[0].count = players.get(myId).blocks || 0;
         draw();
       } else if (data.type === 'batch') {
         data.updates.forEach((update) => {
@@ -185,6 +221,9 @@
             players.set(update.id, update.player);
           } else if (update.type === 'updatePlayer') {
             players.set(update.id, update.player);
+            if (update.id === myId) {
+              inventory[0].count = update.player.blocks || 0;
+            }
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
           } else if (update.type === 'leave') {
@@ -202,6 +241,8 @@
                 if (playerMessages.length === 0) messages.delete(id);
               }
             }, 10000);
+          } else if (update.type === 'arrow') {
+            arrows.push({ x: update.x, y: update.y, targetX: update.targetX, targetY: update.targetY });
           }
         });
         draw();
@@ -221,32 +262,8 @@
         document.getElementById('game').style.display = 'block';
       }
     }
-    function nearby(x1, y1, x2, y2) {
-      return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && (x1 != x2 || y1 != y2);
-    }
-    function moveToTarget() {
-      const me = players.get(myId);
-      if (!me || !targetPos) return;
-      const dx = targetPos.x - me.x;
-      const dy = targetPos.y - me.y;
-      if (dx === 0 && dy === 0) {
-        targetPos = null;
-        isMoving = false;
-        return;
-      }
-      let nextX = me.x;
-      let nextY = me.y;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        nextX += dx > 0 ? 1 : -1;
-      } else {
-        nextY += dy > 0 ? 1 : -1;
-      }
-      if (getCell(nextX, nextY) === 0) {
-        ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
-      } else {
-        targetPos = null;
-        isMoving = false;
-      }
+    function nearby(x1, y1, x2, y2, range = 1) {
+      return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
     }
     function moveWithKeys() {
       const me = players.get(myId);
@@ -258,7 +275,7 @@
       if (keysPressed.has('a') || keysPressed.has('A')) nextX--;
       if (keysPressed.has('d') || keysPressed.has('D')) nextX++;
       if (nextX !== me.x || nextY !== me.y) {
-        if (nearby(me.x, me.y, nextX, nextY) && getCell(nextX, nextY) === 0) {
+        if (nearby(me.x, me.y, nextX, nextY, 1) && getCell(nextX, nextY) === 0) {
           ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
         }
       }
@@ -277,15 +294,43 @@
       if (dir === 'sw') { nextX--; nextY++; }
       if (dir === 'se') { nextX++; nextY++; }
       if (nextX !== me.x || nextY !== me.y) {
-        if (nearby(me.x, me.y, nextX, nextY) && getCell(nextX, nextY) === 0) {
+        if (nearby(me.x, me.y, nextX, nextY, 1) && getCell(nextX, nextY) === 0) {
           ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
         }
       }
     }
     setInterval(() => {
-      if (isMoving) moveToTarget();
       if (keysPressed.size > 0) moveWithKeys();
+      updateArrows();
     }, 100);
+    function updateArrows() {
+      const me = players.get(myId);
+      if (!me) return;
+      let sx = me.x - Math.floor(gridSize / 2);
+      let sy = me.y - Math.floor(gridSize / 2);
+      arrows = arrows.filter(arrow => {
+        const dx = arrow.targetX - arrow.x;
+        const dy = arrow.targetY - arrow.y;
+        if (Math.abs(dx) <= 0.1 && Math.abs(dy) <= 0.1) {
+          return false;
+        }
+        arrow.x += dx * 0.2;
+        arrow.y += dy * 0.2;
+        const wx = Math.round(arrow.x);
+        const wy = Math.round(arrow.y);
+        if (tiles.get(wx + "," + wy) == 1) {
+          return false;
+        }
+        for (let [id, player] of players) {
+          if (Math.abs(player.x - wx) <= 0.5 && Math.abs(player.y - wy) <= 0.5) {
+            ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
+            return false;
+          }
+        }
+        return true;
+      });
+      draw();
+    }
     function wrapText(text, maxWidth) {
       const words = text.split('');
       let lines = [];
@@ -313,8 +358,8 @@
         for (let tx = 0; tx < gridSize; tx++) {
           let wx = sx + tx, wy = sy + ty;
           let xPx = tx * cellPx, yPx = ty * cellPx;
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-          ctx.lineWidth = 0.5;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+          ctx.lineWidth = 0.3;
           ctx.strokeRect(xPx, yPx, cellPx, cellPx);
           if (tiles.get(wx + "," + wy) == 1) {
             ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
@@ -324,6 +369,16 @@
             ctx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
             ctx.shadowBlur = 0;
           }
+        }
+      }
+      for (let arrow of arrows) {
+        let px = (arrow.x - sx) * cellPx + cellPx / 2;
+        let py = (arrow.y - sy) * cellPx + cellPx / 2;
+        if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
+          ctx.fillStyle = "yellow";
+          ctx.beginPath();
+          ctx.arc(px, py, 3, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
       for (let [id, player] of players) {
@@ -342,6 +397,7 @@
             ctx.font = "12px monospace";
             ctx.fillStyle = "white";
             ctx.fillText(player.name, px, py - 20);
+            ctx.fillText(`HP: ${player.hp}`, px, py - 35);
           }
         }
       }
@@ -358,7 +414,7 @@
               const lines = wrapText(playerMessages[i].text, maxWidth);
               totalHeight += lines.length * lineHeight + 10;
             }
-            let currentY = py - 35 - totalHeight;
+            let currentY = py - 50 - totalHeight;
             for (let i = 0; i < playerMessages.length; i++) {
               const lines = wrapText(playerMessages[i].text, maxWidth);
               const boxHeight = lines.length * lineHeight + 10;
@@ -379,14 +435,20 @@
           }
         }
       }
-      document.getElementById("invCount").textContent = "Клетки: " + me.blocks;
+      document.getElementById("invCount").textContent = `HP: ${me.hp}`;
+      document.querySelectorAll('.inventory-slot').forEach((slot, index) => {
+        const countEl = slot.querySelector('.count');
+        if (countEl) {
+          countEl.textContent = inventory[index].count || 0;
+        }
+      });
     }
     function getCell(x, y) {
       return tiles.get(x + "," + y);
     }
     function canvasMouseDown(e) {
       const me = players.get(myId);
-      if (!me) return;
+      if (!me || selectedSlot === null) return;
       let rect = canvas.getBoundingClientRect();
       let x = e.clientX - rect.left;
       let y = e.clientY - rect.top;
@@ -394,37 +456,27 @@
       let ty = Math.floor(y / cellPx);
       let targetX = me.x - Math.floor(gridSize / 2) + tx;
       let targetY = me.y - Math.floor(gridSize / 2) + ty;
-      if (mode == "move") {
-        targetPos = { x: targetX, y: targetY };
-        isMoving = true;
-      } else if (nearby(me.x, me.y, targetX, targetY)) {
-        if (mode == "break") {
-          ws.send(JSON.stringify({ type: 'break', x: targetX, y: targetY }));
-        } else if (mode == "build") {
+      if (selectedSlot === 0) { // Блоки
+        if (nearby(me.x, me.y, targetX, targetY, 2) && getCell(targetX, targetY) == 0 && inventory[0].count > 0) {
           ws.send(JSON.stringify({ type: 'build', x: targetX, y: targetY }));
         }
+      } else if (selectedSlot === 1) { // Меч
+        for (let [id, player] of players) {
+          if (id !== myId && nearby(me.x, me.y, player.x, player.y, 1)) {
+            ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
+            break;
+          }
+        }
+      } else if (selectedSlot === 2) { // Кирка
+        if (nearby(me.x, me.y, targetX, targetY, 1) && getCell(targetX, targetY) == 1) {
+          ws.send(JSON.stringify({ type: 'break', x: targetX, y: targetY }));
+        }
+      } else if (selectedSlot === 3) { // Лук
+        ws.send(JSON.stringify({ type: 'arrow', x: me.x, y: me.y, targetX, targetY }));
+      } else if (selectedSlot === 4) { // Еда
+        ws.send(JSON.stringify({ type: 'heal', amount: 10 }));
       }
     }
-    function canvasMouseUp() {
-      if (mode == "move") {
-        isMoving = false;
-        targetPos = null;
-      }
-    }
-    let btns = {
-      move: document.getElementById("moveMode"),
-      build: document.getElementById("buildMode"),
-      break: document.getElementById("breakMode")
-    };
-    function switchMode(newMode) {
-      mode = newMode;
-      for (let key in btns) {
-        btns[key].classList.toggle("active", key == newMode);
-      }
-    }
-    btns.move.onclick = () => switchMode("move");
-    btns.build.onclick = () => switchMode("build");
-    btns.break.onclick = () => switchMode("break");
     document.getElementById('sendChat').addEventListener('click', () => {
       const input = document.getElementById('chatInput');
       const text = input.value.trim();
@@ -447,13 +499,13 @@
       if (e.key === 'q' || e.key === 'Q') {
         document.getElementById('chatInput').focus();
       }
-      if (e.key === 'e' || e.key === 'E') {
-        currentModeIndex = (currentModeIndex + 1) % modes.length;
-        mode = modes[currentModeIndex];
-        switchMode(mode);
-      }
       if (['w', 'W', 's', 'S', 'a', 'A', 'd', 'D'].includes(e.key)) {
         keysPressed.add(e.key);
+      }
+      if (['1', '2', '3', '4', '5'].includes(e.key)) {
+        selectedSlot = parseInt(e.key) - 1;
+        document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
+        document.querySelector(`.inventory-slot[data-slot="${selectedSlot}"]`).classList.add('selected');
       }
     });
     document.addEventListener('keyup', (e) => {
@@ -467,8 +519,15 @@
         if (dir) moveWithDpad(dir);
       });
     });
+    const inventorySlots = document.querySelectorAll('.inventory-slot');
+    inventorySlots.forEach(slot => {
+      slot.addEventListener('click', () => {
+        selectedSlot = parseInt(slot.getAttribute('data-slot'));
+        inventorySlots.forEach(s => s.classList.remove('selected'));
+        slot.classList.add('selected');
+      });
+    });
     canvas.onmousedown = canvasMouseDown;
-    canvas.onmouseup = canvasMouseUp;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
       let touch = e.touches[0];
@@ -478,11 +537,6 @@
       });
       canvas.dispatchEvent(mouseDown);
     };
-    canvas.ontouchend = (e) => {
-      e.preventDefault();
-      let mouseUp = new MouseEvent("mouseup");
-      canvas.dispatchEvent(mouseUp);
-    };
   </script>
 </body>
-  </html>
+</html>
