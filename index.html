@@ -31,7 +31,7 @@
       border: 1px solid white;
       border-radius: 5px;
     }
-    #login {
+    #login, #deviceSelect {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -40,6 +40,10 @@
       padding: 20px;
       border: 1px solid white;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+      text-align: center;
+    }
+    #deviceSelect {
+      display: none;
     }
     #game {
       display: none;
@@ -69,29 +73,28 @@
       cursor: pointer;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
-    .dpad {
+    .joystick {
       position: absolute;
       bottom: 20px;
       left: 20px;
-      display: none;
-      grid-template-columns: repeat(3, 50px);
-      grid-template-rows: repeat(3, 50px);
-      gap: 5px;
-    }
-    .dpad-button {
+      width: 100px;
+      height: 100px;
       background: rgba(255, 255, 255, 0.2);
-      border: 1px solid white;
-      border-radius: 5px;
-      color: white;
-      font-size: 20px;
-      text-align: center;
-      line-height: 50px;
-      cursor: pointer;
-      user-select: none;
-      touch-action: manipulation;
+      border: 2px solid white;
+      border-radius: 50%;
+      display: none;
+      touch-action: none;
     }
-    .dpad-button:active {
+    .joystick-knob {
+      position: absolute;
+      width: 40px;
+      height: 40px;
       background: rgba(255, 255, 255, 0.5);
+      border: 2px solid white;
+      border-radius: 50%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
     }
     .inventory {
       position: absolute;
@@ -129,9 +132,6 @@
       border-radius: 3px;
     }
     @media (max-width: 600px), (orientation: landscape) {
-      .dpad {
-        display: grid;
-      }
       #chatInput {
         width: 150px;
         font-size: 12px;
@@ -148,16 +148,12 @@
       .inventory-slot .count {
         font-size: 8px;
       }
-      .dpad {
+      .joystick {
         bottom: 20px;
         left: 20px;
       }
     }
     @media (orientation: landscape) {
-      .dpad {
-        bottom: 20px;
-        left: 20px;
-      }
       .inventory {
         bottom: 10px;
       }
@@ -170,7 +166,12 @@
 <body>
   <div id="login">
     <input type="text" id="nameInput" placeholder="сюда впиши имя" maxlength="10">
-    <button onclick="joinGame()">играть</button>
+    <button onclick="proceedToDeviceSelect()">играть</button>
+  </div>
+  <div id="deviceSelect">
+    <p>Ты с чем сидишь?</p>
+    <button onclick="selectDevice('pc')">ПК</button>
+    <button onclick="selectDevice('mobile')">Мобила</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
@@ -179,16 +180,8 @@
       <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
-    <div class="dpad" id="dpad">
-      <div class="dpad-button" data-dir="nw">↖</div>
-      <div class="dpad-button" data-dir="n">↑</div>
-      <div class="dpad-button" data-dir="ne">↗</div>
-      <div class="dpad-button" data-dir="w">←</div>
-      <div class="dpad-button"></div>
-      <div class="dpad-button" data-dir="e">→</div>
-      <div class="dpad-button" data-dir="sw">↙</div>
-      <div class="dpad-button" data-dir="s">↓</div>
-      <div class="dpad-button" data-dir="se">↘</div>
+    <div class="joystick" id="joystick">
+      <div class="joystick-knob" id="joystickKnob"></div>
     </div>
     <div class="inventory" id="inventory">
       <div class="inventory-slot" data-slot="0"><span>Блоки</span><span class="count">0</span></div>
@@ -200,9 +193,8 @@
   </div>
   <script>
     let gridSize = 15, cellPx = 30, canvasPx = gridSize * cellPx;
+    let deviceType = null;
     let canvas = document.getElementById("gameCanvas");
-    canvas.width = canvasPx;
-    canvas.height = canvasPx;
     let ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = true;
     let tiles = new Map();
@@ -219,6 +211,10 @@
       { type: "bow" },
       { type: "food" }
     ];
+    let joystickActive = false;
+    let joystickDirection = { x: 0, y: 0 };
+    const joystick = document.getElementById("joystick");
+    const joystickKnob = document.getElementById("joystickKnob");
     const ws = new WebSocket('wss://' + window.location.hostname);
     ws.onopen = () => {
       console.log('Connected to server');
@@ -280,13 +276,30 @@
     ws.onclose = () => {
       console.log('WebSocket connection closed');
     };
-    function joinGame() {
+    function proceedToDeviceSelect() {
       const name = document.getElementById('nameInput').value.trim();
       if (name) {
         ws.send(JSON.stringify({ type: 'setName', name }));
         document.getElementById('login').style.display = 'none';
-        document.getElementById('game').style.display = 'block';
+        document.getElementById('deviceSelect').style.display = 'block';
       }
+    }
+    function selectDevice(type) {
+      deviceType = type;
+      if (type === 'pc') {
+        canvasPx = 600; // Увеличиваем размер для ПК
+        cellPx = canvasPx / gridSize;
+        joystick.style.display = 'none';
+      } else {
+        canvasPx = 450; // Размер для мобильных
+        cellPx = canvasPx / gridSize;
+        joystick.style.display = 'block';
+      }
+      canvas.width = canvasPx;
+      canvas.height = canvasPx;
+      document.getElementById('deviceSelect').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+      draw();
     }
     function nearby(x1, y1, x2, y2, range = 1) {
       return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
@@ -306,25 +319,26 @@
         }
       }
     }
-    function moveWithDpad(dir) {
+    function moveWithJoystick() {
       const me = players.get(myId);
-      if (!me) return;
+      if (!me || !joystickActive) return;
       let nextX = me.x;
       let nextY = me.y;
-      if (dir === 'n') nextY--;
-      if (dir === 's') nextY++;
-      if (dir === 'w') nextX--;
-      if (dir === 'e') nextX++;
-      if (dir === 'nw') { nextX--; nextY--; }
-      if (dir === 'ne') { nextX++; nextY--; }
-      if (dir === 'sw') { nextX--; nextY++; }
-      if (dir === 'se') { nextX++; nextY++; }
+      if (joystickDirection.y < -0.3) nextY--; // Вверх
+      if (joystickDirection.y > 0.3) nextY++; // Вниз
+      if (joystickDirection.x < -0.3) nextX--; // Влево
+      if (joystickDirection.x > 0.3) nextX++; // Вправо
       if (nextX !== me.x || nextY !== me.y) {
         if (nearby(me.x, me.y, nextX, nextY, 1) && getCell(nextX, nextY) === 0) {
           ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
         }
       }
     }
+    setInterval(() => {
+      if (keysPressed.size > 0) moveWithKeys();
+      if (deviceType === 'mobile') moveWithJoystick();
+      updateArrows();
+    }, 100);
     function calculatePath(startX, startY, targetX, targetY) {
       let path = [];
       let dx = targetX - startX;
@@ -342,10 +356,6 @@
       }
       return path;
     }
-    setInterval(() => {
-      if (keysPressed.size > 0) moveWithKeys();
-      updateArrows();
-    }, 100);
     function updateArrows() {
       const me = players.get(myId);
       if (!me) return;
@@ -353,14 +363,14 @@
       let sy = me.y - Math.floor(gridSize / 2);
       arrows = arrows.filter(arrow => {
         const elapsed = (Date.now() - arrow.startTime) / 1000;
-        if (elapsed > 10) return false; // Исчезает через 10 секунд
-        if (arrow.path.length === 0) return false; // Достиг цели
+        if (elapsed > 10) return false;
+        if (arrow.path.length === 0) return false;
         let nextPos = arrow.path.shift();
         arrow.currentX = nextPos.x;
         arrow.currentY = nextPos.y;
-        if (tiles.get(arrow.currentX + "," + arrow.currentY) == 1) return false; // Столкновение со стеной
+        if (tiles.get(arrow.currentX + "," + arrow.currentY) == 1) return false;
         for (let [id, player] of players) {
-          if (id === arrow.shooterId) continue; // Не наносит урон стреляющему
+          if (id === arrow.shooterId) continue;
           if (Math.abs(player.x - arrow.currentX) <= 0.5 && Math.abs(player.y - arrow.currentY) <= 0.5) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
             return false;
@@ -504,24 +514,24 @@
       let ty = Math.floor(y / cellPx);
       let targetX = me.x - Math.floor(gridSize / 2) + tx;
       let targetY = me.y - Math.floor(gridSize / 2) + ty;
-      if (selectedSlot === 0) { // Блоки
+      if (selectedSlot === 0) {
         if (nearby(me.x, me.y, targetX, targetY, 2) && getCell(targetX, targetY) == 0 && inventory[0].count > 0) {
           ws.send(JSON.stringify({ type: 'build', x: targetX, y: targetY }));
         }
-      } else if (selectedSlot === 1) { // Меч
+      } else if (selectedSlot === 1) {
         for (let [id, player] of players) {
           if (id !== myId && nearby(me.x, me.y, player.x, player.y, 1)) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
             break;
           }
         }
-      } else if (selectedSlot === 2) { // Кирка
+      } else if (selectedSlot === 2) {
         if (nearby(me.x, me.y, targetX, targetY, 1) && getCell(targetX, targetY) == 1) {
           ws.send(JSON.stringify({ type: 'break', x: targetX, y: targetY }));
         }
-      } else if (selectedSlot === 3) { // Лук
+      } else if (selectedSlot === 3) {
         ws.send(JSON.stringify({ type: 'arrow', x: me.x, y: me.y, targetX, targetY, shooterId: myId }));
-      } else if (selectedSlot === 4) { // Еда
+      } else if (selectedSlot === 4) {
         ws.send(JSON.stringify({ type: 'heal', amount: 10 }));
       }
     }
@@ -559,14 +569,6 @@
     document.addEventListener('keyup', (e) => {
       keysPressed.delete(e.key);
     });
-    const dpadButtons = document.querySelectorAll('.dpad-button');
-    dpadButtons.forEach(button => {
-      button.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        const dir = button.getAttribute('data-dir');
-        if (dir) moveWithDpad(dir);
-      });
-    });
     const inventorySlots = document.querySelectorAll('.inventory-slot');
     inventorySlots.forEach(slot => {
       slot.addEventListener('click', () => {
@@ -575,6 +577,40 @@
         slot.classList.add('selected');
       });
     });
+    joystick.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      joystickActive = true;
+      updateJoystick(e);
+    });
+    joystick.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      updateJoystick(e);
+    });
+    joystick.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      joystickActive = false;
+      joystickDirection = { x: 0, y: 0 };
+      joystickKnob.style.left = '50%';
+      joystickKnob.style.top = '50%';
+    });
+    function updateJoystick(e) {
+      const touch = e.touches[0];
+      const rect = joystick.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      let dx = (touch.clientX - centerX) / (rect.width / 2);
+      let dy = (touch.clientY - centerY) / (rect.height / 2);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > 1) {
+        dx /= distance;
+        dy /= distance;
+      }
+      joystickDirection = { x: dx, y: dy };
+      const knobX = 50 + dx * 30;
+      const knobY = 50 + dy * 30;
+      joystickKnob.style.left = `${knobX}%`;
+      joystickKnob.style.top = `${knobY}%`;
+    }
     canvas.onmousedown = canvasMouseDown;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
