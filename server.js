@@ -59,8 +59,8 @@ function setCell(x, y, val) {
   if (!tiles[x]) tiles[x] = [];
   tiles[x][y] = val;
 }
-function nearby(x1, y1, x2, y2) {
-  return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && (x1 != x2 || y1 != y2);
+function nearby(x1, y1, x2, y2, range = 1) {
+  return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
 }
 function isInRange(x1, y1, x2, y2, range) {
   return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range;
@@ -114,6 +114,9 @@ setInterval(() => {
         const otherPlayer = players.get(update.id);
         return isInRange(player.x, player.y, otherPlayer.x, otherPlayer.y, 15);
       }
+      if (update.type === 'arrow') {
+        return isInRange(player.x, player.y, update.x, update.y, 15) || isInRange(player.x, player.y, update.targetX, update.targetY, 15);
+      }
       return true;
     });
     if (visibleUpdates.length > 0) {
@@ -124,7 +127,7 @@ setInterval(() => {
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
   ws.playerId = id;
-  let player = { x: 0, y: 0, blocks: 0, name: '', color: getUniqueColor() };
+  let player = { x: 0, y: 0, blocks: 0, hp: 100, name: '', color: getUniqueColor() };
   if (getCell(player.x, player.y) == 1) {
     let found = false;
     for (let r = 1; r < 100 && !found; r++) {
@@ -159,14 +162,14 @@ wss.on('connection', (ws) => {
       queueUpdate({ type: 'updatePlayer', id, player });
     } else if (data.type === 'move') {
       const { x, y } = data;
-      if (nearby(player.x, player.y, x, y) && getCell(x, y) == 0) {
+      if (nearby(player.x, player.y, x, y, 1) && getCell(x, y) == 0) {
         player.x = x;
         player.y = y;
         queueUpdate({ type: 'updatePlayer', id, player });
       }
     } else if (data.type === 'break') {
       const { x, y } = data;
-      if (nearby(player.x, player.y, x, y) && getCell(x, y) == 1) {
+      if (nearby(player.x, player.y, x, y, 1) && getCell(x, y) == 1) {
         setCell(x, y, 0);
         player.blocks++;
         queueUpdate({ type: 'updateTile', x, y, value: 0 });
@@ -174,7 +177,7 @@ wss.on('connection', (ws) => {
       }
     } else if (data.type === 'build') {
       const { x, y } = data;
-      if (nearby(player.x, player.y, x, y) && getCell(x, y) == 0 && player.blocks > 0) {
+      if (nearby(player.x, player.y, x, y, 2) && getCell(x, y) == 0 && player.blocks > 0) {
         setCell(x, y, 1);
         player.blocks--;
         queueUpdate({ type: 'updateTile', x, y, value: 1 });
@@ -183,6 +186,33 @@ wss.on('connection', (ws) => {
     } else if (data.type === 'chat') {
       const timestamp = Date.now();
       queueUpdate({ type: 'chat', id, text: data.text, timestamp });
+    } else if (data.type === 'damage') {
+      const target = players.get(data.targetId);
+      if (target) {
+        target.hp = Math.max(0, target.hp - data.damage);
+        if (target.hp === 0) {
+          target.hp = 100;
+          let found = false;
+          for (let r = 1; r < 100 && !found; r++) {
+            for (let dy = -r; dy <= r && !found; dy++) {
+              for (let dx = -r; dx <= r; dx++) {
+                if ((Math.abs(dx) == r || Math.abs(dy) == r) && getCell(target.x + dx, target.y + dy) == 0) {
+                  target.x += dx;
+                  target.y += dy;
+                  found = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        queueUpdate({ type: 'updatePlayer', id: data.targetId, player: target });
+      }
+    } else if (data.type === 'heal') {
+      player.hp = Math.min(100, player.hp + data.amount);
+      queueUpdate({ type: 'updatePlayer', id, player });
+    } else if (data.type === 'arrow') {
+      queueUpdate({ type: 'arrow', x: data.x, y: data.y, targetX: data.targetX, targetY: data.targetY });
     }
   });
   ws.on('close', () => {
