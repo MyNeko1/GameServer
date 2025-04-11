@@ -65,7 +65,7 @@
     let ctx = canvas.getContext("2d");
 
     // Подключение к WebSocket-серверу
-    const ws = new WebSocket('wss://' + window.location.hostname + ':' + (window.location.port || 443));
+    const ws = new WebSocket('wss://' + window.location.hostname);
     let playerId = null;
     let seed = null;
     let tiles = new Map();
