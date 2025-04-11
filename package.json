@@ -1,24 +1,13 @@
 {
   "name": "gameserver",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/MyNeko1/GameServer.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/MyNeko1/GameServer/issues"
-  },
-  "homepage": "https://github.com/MyNeko1/GameServer#readme",
   "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
-    "express": "^5.1.0",
-    "ws": "^8.18.1"
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
   }
 }
