@@ -59,12 +59,34 @@
     #game {
       display: none;
     }
+    .chat {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+    }
+    #chatInput {
+      background: #333;
+      color: white;
+      border: 1px solid white;
+      padding: 5px;
+      font-size: 14px;
+    }
+    #sendChat {
+      background: #333;
+      color: white;
+      border: 1px solid white;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="сюда имя напиши своё" maxlength="10">
-    <button onclick="joinGame()">в атаку</button>
+    <input type="text" id="nameInput" placeholder="Введите имя" maxlength="10">
+    <button onclick="joinGame()">Войти</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
@@ -73,6 +95,10 @@
       <button class="btn active" id="moveMode">Движение</button>
       <button class="btn" id="buildMode">Строительство</button>
       <button class="btn" id="breakMode">Ломание</button>
+    </div>
+    <div class="chat">
+      <input type="text" id="chatInput" placeholder="Введите сообщение" maxlength="50">
+      <button id="sendChat">ГАФ</button>
     </div>
   </div>
   <script>
@@ -84,6 +110,7 @@
 
     let tiles = new Map();
     let players = new Map();
+    let messages = new Map(); // {playerId: [{text, timestamp}]}
     let myId = null;
     let mode = "move";
 
@@ -100,17 +127,31 @@
         players = new Map(Object.entries(data.players));
         tiles = new Map(Object.entries(data.tiles));
         draw();
-      } else if (data.type === 'join') {
-        players.set(data.id, data.player);
-        draw();
-      } else if (data.type === 'updatePlayer') {
-        players.set(data.id, data.player);
-        draw();
-      } else if (data.type === 'updateTile') {
-        tiles.set(data.x + "," + data.y, data.value);
-        draw();
-      } else if (data.type === 'leave') {
-        players.delete(data.id);
+      } else if (data.type === 'batch') {
+        data.updates.forEach((update) => {
+          if (update.type === 'join') {
+            players.set(update.id, update.player);
+          } else if (update.type === 'updatePlayer') {
+            players.set(update.id, update.player);
+          } else if (update.type === 'updateTile') {
+            tiles.set(update.x + "," + update.y, update.value);
+          } else if (update.type === 'leave') {
+            players.delete(update.id);
+            messages.delete(update.id);
+          } else if (update.type === 'chat') {
+            const { id, text, timestamp } = update;
+            if (!messages.has(id)) messages.set(id, []);
+            messages.get(id).push({ text, timestamp });
+            setTimeout(() => {
+              const playerMessages = messages.get(id);
+              if (playerMessages) {
+                const index = playerMessages.findIndex(m => m.timestamp === timestamp);
+                if (index !== -1) playerMessages.splice(index, 1);
+                if (playerMessages.length === 0) messages.delete(id);
+              }
+            }, 10000);
+          }
+        });
         draw();
       }
     };
@@ -178,6 +219,21 @@
         }
       }
 
+      for (let [id, player] of players) {
+        let px = (player.x - sx) * cellPx + cellPx / 2;
+        let py = (player.y - sy) * cellPx + cellPx / 2;
+        if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
+          if (messages.has(id)) {
+            const playerMessages = messages.get(id);
+            for (let i = 0; i < playerMessages.length; i++) {
+              ctx.font = "12px monospace";
+              ctx.fillStyle = "white";
+              ctx.fillText(playerMessages[i].text, px, py - 35 - i * 15);
+            }
+          }
+        }
+      }
+
       document.getElementById("invCount").textContent = "Клетки: " + me.blocks;
     }
 
@@ -218,6 +274,15 @@
     btns.move.onclick = () => switchMode("move");
     btns.build.onclick = () => switchMode("build");
     btns.break.onclick = () => switchMode("break");
+
+    document.getElementById('sendChat').addEventListener('click', () => {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if (text) {
+        ws.send(JSON.stringify({ type: 'chat', text }));
+        input.value = '';
+      }
+    });
 
     canvas.onclick = canvasClick;
     canvas.ontouchstart = (e) => {
