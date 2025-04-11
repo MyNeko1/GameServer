@@ -91,6 +91,35 @@
       cursor: pointer;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
+    .dpad {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: none;
+      grid-template-columns: repeat(3, 40px);
+      grid-template-rows: repeat(3, 40px);
+      gap: 5px;
+    }
+    .dpad-button {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid white;
+      border-radius: 5px;
+      color: white;
+      font-size: 16px;
+      text-align: center;
+      line-height: 40px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+    }
+    .dpad-button:active {
+      background: rgba(255, 255, 255, 0.5);
+    }
+    @media (max-width: 600px) {
+      .dpad {
+        display: grid;
+      }
+    }
   </style>
 </head>
 <body>
@@ -110,6 +139,17 @@
       <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
+    <div class="dpad" id="dpad">
+      <div class="dpad-button" data-dir="nw">↖</div>
+      <div class="dpad-button" data-dir="n">↑</div>
+      <div class="dpad-button" data-dir="ne">↗</div>
+      <div class="dpad-button" data-dir="w">←</div>
+      <div class="dpad-button"></div>
+      <div class="dpad-button" data-dir="e">→</div>
+      <div class="dpad-button" data-dir="sw">↙</div>
+      <div class="dpad-button" data-dir="s">↓</div>
+      <div class="dpad-button" data-dir="se">↘</div>
+    </div>
   </div>
   <script>
     let gridSize = 15, cellPx = 30, canvasPx = gridSize * cellPx;
@@ -127,6 +167,7 @@
     let currentModeIndex = 0;
     let targetPos = null;
     let isMoving = false;
+    let keysPressed = new Set();
     const ws = new WebSocket('wss://' + window.location.hostname);
     ws.onopen = () => {
       console.log('Connected to server');
@@ -207,24 +248,59 @@
         isMoving = false;
       }
     }
+    function moveWithKeys() {
+      const me = players.get(myId);
+      if (!me) return;
+      let nextX = me.x;
+      let nextY = me.y;
+      if (keysPressed.has('w') || keysPressed.has('W')) nextY--;
+      if (keysPressed.has('s') || keysPressed.has('S')) nextY++;
+      if (keysPressed.has('a') || keysPressed.has('A')) nextX--;
+      if (keysPressed.has('d') || keysPressed.has('D')) nextX++;
+      if (nextX !== me.x || nextY !== me.y) {
+        if (nearby(me.x, me.y, nextX, nextY) && getCell(nextX, nextY) === 0) {
+          ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
+        }
+      }
+    }
+    function moveWithDpad(dir) {
+      const me = players.get(myId);
+      if (!me) return;
+      let nextX = me.x;
+      let nextY = me.y;
+      if (dir === 'n') nextY--;
+      if (dir === 's') nextY++;
+      if (dir === 'w') nextX--;
+      if (dir === 'e') nextX++;
+      if (dir === 'nw') { nextX--; nextY--; }
+      if (dir === 'ne') { nextX++; nextY--; }
+      if (dir === 'sw') { nextX--; nextY++; }
+      if (dir === 'se') { nextX++; nextY++; }
+      if (nextX !== me.x || nextY !== me.y) {
+        if (nearby(me.x, me.y, nextX, nextY) && getCell(nextX, nextY) === 0) {
+          ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
+        }
+      }
+    }
     setInterval(() => {
       if (isMoving) moveToTarget();
+      if (keysPressed.size > 0) moveWithKeys();
     }, 100);
     function wrapText(text, maxWidth) {
-      const words = text.split(' ');
+      const words = text.split('');
       let lines = [];
-      let currentLine = words[0];
-      for (let i = 1; i < words.length; i++) {
-        const testLine = currentLine + ' ' + words[i];
+      let currentLine = '';
+      for (let i = 0; i < words.length; i++) {
+        const testLine = currentLine + words[i];
         const testWidth = ctx.measureText(testLine).width;
-        if (testWidth > maxWidth) {
+        if (testWidth > maxWidth && currentLine !== '') {
           lines.push(currentLine);
           currentLine = words[i];
         } else {
           currentLine = testLine;
         }
       }
-      lines.push(currentLine);
+      if (currentLine) lines.push(currentLine);
       return lines;
     }
     function draw() {
@@ -237,8 +313,8 @@
         for (let tx = 0; tx < gridSize; tx++) {
           let wx = sx + tx, wy = sy + ty;
           let xPx = tx * cellPx, yPx = ty * cellPx;
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+          ctx.lineWidth = 0.5;
           ctx.strokeRect(xPx, yPx, cellPx, cellPx);
           if (tiles.get(wx + "," + wy) == 1) {
             ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
@@ -247,11 +323,6 @@
             ctx.shadowBlur = 5;
             ctx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
             ctx.shadowBlur = 0;
-          } else if (nearby(me.x, me.y, wx, wy)) {
-            ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-            ctx.beginPath();
-            ctx.arc(xPx + cellPx / 2, yPx + cellPx / 2, 4, 0, Math.PI * 2);
-            ctx.fill();
           }
         }
       }
@@ -381,6 +452,20 @@
         mode = modes[currentModeIndex];
         switchMode(mode);
       }
+      if (['w', 'W', 's', 'S', 'a', 'A', 'd', 'D'].includes(e.key)) {
+        keysPressed.add(e.key);
+      }
+    });
+    document.addEventListener('keyup', (e) => {
+      keysPressed.delete(e.key);
+    });
+    const dpadButtons = document.querySelectorAll('.dpad-button');
+    dpadButtons.forEach(button => {
+      button.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        const dir = button.getAttribute('data-dir');
+        if (dir) moveWithDpad(dir);
+      });
     });
     canvas.onmousedown = canvasMouseDown;
     canvas.onmouseup = canvasMouseUp;
@@ -400,4 +485,4 @@
     };
   </script>
 </body>
-</html>
+  </html>
