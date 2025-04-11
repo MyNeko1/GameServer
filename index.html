@@ -19,6 +19,7 @@
     canvas {
       border: 1px solid white;
       touch-action: none;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
     .buttons {
       position: absolute;
@@ -37,15 +38,21 @@
       font-size: 14px;
       user-select: none;
       touch-action: manipulation;
+      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
     .btn.active {
       background: #666;
+      box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
     }
     .inv {
       position: absolute;
       top: 10px;
       left: 10px;
       font-size: 16px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 5px;
+      border: 1px solid white;
+      border-radius: 5px;
     }
     #login {
       position: absolute;
@@ -55,6 +62,7 @@
       background: #333;
       padding: 20px;
       border: 1px solid white;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
     #game {
       display: none;
@@ -73,6 +81,7 @@
       border: 1px solid white;
       padding: 5px;
       font-size: 14px;
+      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
     #sendChat {
       background: #333;
@@ -80,24 +89,25 @@
       border: 1px solid white;
       padding: 5px 10px;
       cursor: pointer;
+      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
   </style>
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="ты гей?" maxlength="10">
-    <button onclick="joinGame()">да</button>
+    <input type="text" id="nameInput" placeholder="Введите имя" maxlength="10">
+    <button onclick="joinGame()">Войти</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
-    <div class="inv" id="invCount">Блоки: 0</div>
+    <div class="inv" id="invCount">Клетки: 0</div>
     <div class="buttons">
       <button class="btn active" id="moveMode">Движение</button>
       <button class="btn" id="buildMode">Строительство</button>
       <button class="btn" id="breakMode">Ломание</button>
     </div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
+      <input type="text" id="chatInput" placeholder="Введите сообщение" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
   </div>
@@ -107,11 +117,16 @@
     canvas.width = canvasPx;
     canvas.height = canvasPx;
     let ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
     let tiles = new Map();
     let players = new Map();
     let messages = new Map();
     let myId = null;
     let mode = "move";
+    const modes = ["move", "build", "break"];
+    let currentModeIndex = 0;
+    let targetPos = null;
+    let isMoving = false;
     const ws = new WebSocket('wss://' + window.location.hostname);
     ws.onopen = () => {
       console.log('Connected to server');
@@ -168,6 +183,50 @@
     function nearby(x1, y1, x2, y2) {
       return Math.abs(x1 - x2) <= 1 && Math.abs(y1 - y2) <= 1 && (x1 != x2 || y1 != y2);
     }
+    function moveToTarget() {
+      const me = players.get(myId);
+      if (!me || !targetPos) return;
+      const dx = targetPos.x - me.x;
+      const dy = targetPos.y - me.y;
+      if (dx === 0 && dy === 0) {
+        targetPos = null;
+        isMoving = false;
+        return;
+      }
+      let nextX = me.x;
+      let nextY = me.y;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        nextX += dx > 0 ? 1 : -1;
+      } else {
+        nextY += dy > 0 ? 1 : -1;
+      }
+      if (getCell(nextX, nextY) === 0) {
+        ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
+      } else {
+        targetPos = null;
+        isMoving = false;
+      }
+    }
+    setInterval(() => {
+      if (isMoving) moveToTarget();
+    }, 100);
+    function wrapText(text, maxWidth) {
+      const words = text.split(' ');
+      let lines = [];
+      let currentLine = words[0];
+      for (let i = 1; i < words.length; i++) {
+        const testLine = currentLine + ' ' + words[i];
+        const testWidth = ctx.measureText(testLine).width;
+        if (testWidth > maxWidth) {
+          lines.push(currentLine);
+          currentLine = words[i];
+        } else {
+          currentLine = testLine;
+        }
+      }
+      lines.push(currentLine);
+      return lines;
+    }
     function draw() {
       ctx.clearRect(0, 0, canvasPx, canvasPx);
       const me = players.get(myId);
@@ -178,15 +237,20 @@
         for (let tx = 0; tx < gridSize; tx++) {
           let wx = sx + tx, wy = sy + ty;
           let xPx = tx * cellPx, yPx = ty * cellPx;
-          ctx.strokeStyle = "white";
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+          ctx.lineWidth = 1;
           ctx.strokeRect(xPx, yPx, cellPx, cellPx);
           if (tiles.get(wx + "," + wy) == 1) {
-            ctx.fillStyle = "white";
-            ctx.fillRect(xPx, yPx, cellPx, cellPx);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
+            ctx.shadowColor = "rgba(255, 255, 255, 0.3)";
+            ctx.shadowBlur = 5;
+            ctx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
+            ctx.shadowBlur = 0;
           } else if (nearby(me.x, me.y, wx, wy)) {
-            ctx.fillStyle = "white";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
             ctx.beginPath();
-            ctx.arc(xPx + cellPx / 2, yPx + cellPx / 2, 3, 0, Math.PI * 2);
+            ctx.arc(xPx + cellPx / 2, yPx + cellPx / 2, 4, 0, Math.PI * 2);
             ctx.fill();
           }
         }
@@ -199,9 +263,13 @@
           ctx.font = "26px monospace";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+          ctx.shadowBlur = 3;
           ctx.fillText("@", px, py);
+          ctx.shadowBlur = 0;
           if (player.name) {
             ctx.font = "12px monospace";
+            ctx.fillStyle = "white";
             ctx.fillText(player.name, px, py - 20);
           }
         }
@@ -212,17 +280,40 @@
         if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
           if (messages.has(id)) {
             const playerMessages = messages.get(id);
+            const maxWidth = cellPx * 3;
+            let totalHeight = 0;
+            const lineHeight = 15;
             for (let i = 0; i < playerMessages.length; i++) {
+              const lines = wrapText(playerMessages[i].text, maxWidth);
+              totalHeight += lines.length * lineHeight + 10;
+            }
+            let currentY = py - 35 - totalHeight;
+            for (let i = 0; i < playerMessages.length; i++) {
+              const lines = wrapText(playerMessages[i].text, maxWidth);
+              const boxHeight = lines.length * lineHeight + 10;
+              const boxWidth = maxWidth + 10;
+              ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+              ctx.strokeStyle = "white";
+              ctx.lineWidth = 1;
+              ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+              ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
               ctx.font = "12px monospace";
               ctx.fillStyle = "white";
-              ctx.fillText(playerMessages[i].text, px, py - 35 - i * 15);
+              ctx.textBaseline = "middle";
+              for (let j = 0; j < lines.length; j++) {
+                ctx.fillText(lines[j], px, currentY + 5 + (j + 0.5) * lineHeight);
+              }
+              currentY += boxHeight + 5;
             }
           }
         }
       }
       document.getElementById("invCount").textContent = "Клетки: " + me.blocks;
     }
-    function canvasClick(e) {
+    function getCell(x, y) {
+      return tiles.get(x + "," + y);
+    }
+    function canvasMouseDown(e) {
       const me = players.get(myId);
       if (!me) return;
       let rect = canvas.getBoundingClientRect();
@@ -232,14 +323,21 @@
       let ty = Math.floor(y / cellPx);
       let targetX = me.x - Math.floor(gridSize / 2) + tx;
       let targetY = me.y - Math.floor(gridSize / 2) + ty;
-      if (nearby(me.x, me.y, targetX, targetY)) {
-        if (mode == "move") {
-          ws.send(JSON.stringify({ type: 'move', x: targetX, y: targetY }));
-        } else if (mode == "break") {
+      if (mode == "move") {
+        targetPos = { x: targetX, y: targetY };
+        isMoving = true;
+      } else if (nearby(me.x, me.y, targetX, targetY)) {
+        if (mode == "break") {
           ws.send(JSON.stringify({ type: 'break', x: targetX, y: targetY }));
         } else if (mode == "build") {
           ws.send(JSON.stringify({ type: 'build', x: targetX, y: targetY }));
         }
+      }
+    }
+    function canvasMouseUp() {
+      if (mode == "move") {
+        isMoving = false;
+        targetPos = null;
       }
     }
     let btns = {
@@ -264,15 +362,41 @@
         input.value = '';
       }
     });
-    canvas.onclick = canvasClick;
+    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (text) {
+          ws.send(JSON.stringify({ type: 'chat', text }));
+          input.value = '';
+        }
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'q' || e.key === 'Q') {
+        document.getElementById('chatInput').focus();
+      }
+      if (e.key === 'e' || e.key === 'E') {
+        currentModeIndex = (currentModeIndex + 1) % modes.length;
+        mode = modes[currentModeIndex];
+        switchMode(mode);
+      }
+    });
+    canvas.onmousedown = canvasMouseDown;
+    canvas.onmouseup = canvasMouseUp;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
       let touch = e.touches[0];
-      let click = new MouseEvent("click", {
+      let mouseDown = new MouseEvent("mousedown", {
         clientX: touch.clientX,
         clientY: touch.clientY
       });
-      canvas.dispatchEvent(click);
+      canvas.dispatchEvent(mouseDown);
+    };
+    canvas.ontouchend = (e) => {
+      e.preventDefault();
+      let mouseUp = new MouseEvent("mouseup");
+      canvas.dispatchEvent(mouseUp);
     };
   </script>
 </body>
