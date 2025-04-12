@@ -130,8 +130,7 @@ setInterval(() => {
         return isInRange(player.x, player.y, update.x, update.y, 15);
       }
       if (update.type === 'chat') {
-        const otherPlayer = players.get(update.id);
-        return isInRange(player.x, player.y, otherPlayer.x, otherPlayer.y, 15);
+        return true; // Глобальный чат виден всем
       }
       if (update.type === 'arrow') {
         return isInRange(player.x, player.y, update.x, update.y, 15) || isInRange(player.x, player.y, update.targetX, update.targetY, 15);
