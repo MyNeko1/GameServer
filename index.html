@@ -73,28 +73,36 @@
       cursor: pointer;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
     }
-    .joystick {
+    .global-chat {
       position: absolute;
-      bottom: 20px;
-      left: 20px;
-      width: 100px;
-      height: 100px;
-      background: rgba(255, 255, 255, 0.2);
-      border: 2px solid white;
-      border-radius: 50%;
-      display: none;
-      touch-action: none;
+      top: 10px;
+      right: 10px;
+      width: 200px;
+      height: 200px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid white;
+      border-radius: 5px;
+      padding: 5px;
+      overflow-y: auto;
+      font-size: 12px;
     }
-    .joystick-knob {
+    .global-chat-message {
+      margin-bottom: 5px;
+      word-wrap: break-word;
+    }
+    .player-list {
       position: absolute;
-      width: 40px;
-      height: 40px;
-      background: rgba(255, 255, 255, 0.5);
-      border: 2px solid white;
-      border-radius: 50%;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+      top: 220px;
+      right: 10px;
+      width: 200px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid white;
+      border-radius: 5px;
+      padding: 5px;
+      font-size: 12px;
+    }
+    .player-list-item {
+      margin-bottom: 3px;
     }
     .inventory {
       position: absolute;
@@ -148,31 +156,37 @@
       .inventory-slot .count {
         font-size: 8px;
       }
-      .joystick {
-        bottom: 20px;
-        left: 20px;
-      }
       .chat {
         bottom: 70px;
       }
       .inventory {
         bottom: 10px;
       }
+      .global-chat {
+        width: 150px;
+        height: 150px;
+        font-size: 10px;
+      }
+      .player-list {
+        width: 150px;
+        font-size: 10px;
+        top: 170px;
+      }
     }
     @media (min-width: 601px) {
       .chat {
-        bottom: 100px; /* Поднимаем чат выше на ПК */
+        bottom: 100px;
       }
       .inventory {
-        bottom: 40px; /* Поднимаем инвентарь выше на ПК */
+        bottom: 40px;
       }
     }
   </style>
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="как зовут путник?" maxlength="10">
-    <button onclick="proceedToDeviceSelect()">играть</button>
+    <input type="text" id="nameInput" placeholder="Введите имя" maxlength="10">
+    <button onclick="proceedToDeviceSelect()">Войти</button>
   </div>
   <div id="deviceSelect">
     <p>Ты с чем сидишь?</p>
@@ -183,12 +197,11 @@
     <canvas id="gameCanvas"></canvas>
     <div class="inv" id="invCount">HP: 100</div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
+      <input type="text" id="chatInput" placeholder="Введите сообщение" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
-    <div class="joystick" id="joystick">
-      <div class="joystick-knob" id="joystickKnob"></div>
-    </div>
+    <div class="global-chat" id="globalChat"></div>
+    <div class="player-list" id="playerList"></div>
     <div class="inventory" id="inventory">
       <div class="inventory-slot" data-slot="0"><span>Блоки</span><span class="count">0</span></div>
       <div class="inventory-slot" data-slot="1">Меч</div>
@@ -206,9 +219,9 @@
     let tiles = new Map();
     let players = new Map();
     let messages = new Map();
+    let globalMessages = [];
     let arrows = [];
     let myId = null;
-    let keysPressed = new Set();
     let selectedSlot = null;
     let inventory = [
       { type: "blocks", count: 0 },
@@ -217,10 +230,7 @@
       { type: "bow" },
       { type: "food" }
     ];
-    let joystickActive = false;
-    let joystickDirection = { x: 0, y: 0 };
-    const joystick = document.getElementById("joystick");
-    const joystickKnob = document.getElementById("joystickKnob");
+    let path = [];
     const ws = new WebSocket('wss://' + window.location.hostname);
     ws.onopen = () => {
       console.log('Connected to server');
@@ -232,11 +242,13 @@
         players = new Map(Object.entries(data.players));
         tiles = new Map(Object.entries(data.tiles));
         inventory[0].count = players.get(myId).blocks || 0;
+        updatePlayerList();
         draw();
       } else if (data.type === 'batch') {
         data.updates.forEach((update) => {
           if (update.type === 'join') {
             players.set(update.id, update.player);
+            updatePlayerList();
           } else if (update.type === 'updatePlayer') {
             players.set(update.id, update.player);
             if (update.id === myId) {
@@ -247,8 +259,18 @@
           } else if (update.type === 'leave') {
             players.delete(update.id);
             messages.delete(update.id);
+            updatePlayerList();
           } else if (update.type === 'chat') {
             const { id, text, timestamp } = update;
+            const player = players.get(id);
+            if (player) {
+              globalMessages.push({ id, name: player.name, text, timestamp });
+              updateGlobalChat();
+              setTimeout(() => {
+                globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+                updateGlobalChat();
+              }, 60000);
+            }
             if (!messages.has(id)) messages.set(id, []);
             messages.get(id).push({ text, timestamp });
             setTimeout(() => {
@@ -295,11 +317,9 @@
       if (type === 'pc') {
         canvasPx = 600;
         cellPx = canvasPx / gridSize;
-        joystick.style.display = 'none';
       } else {
         canvasPx = 450;
         cellPx = canvasPx / gridSize;
-        joystick.style.display = 'block';
       }
       canvas.width = canvasPx;
       canvas.height = canvasPx;
@@ -310,41 +330,50 @@
     function nearby(x1, y1, x2, y2, range = 1) {
       return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
     }
-    function moveWithKeys() {
-      const me = players.get(myId);
-      if (!me) return;
-      let nextX = me.x;
-      let nextY = me.y;
-      if (keysPressed.has('w') || keysPressed.has('W')) nextY--;
-      if (keysPressed.has('s') || keysPressed.has('S')) nextY++;
-      if (keysPressed.has('a') || keysPressed.has('A')) nextX--;
-      if (keysPressed.has('d') || keysPressed.has('D')) nextX++;
-      if (nextX !== me.x || nextY !== me.y) {
-        if (nearby(me.x, me.y, nextX, nextY, 1) && getCell(nextX, nextY) === 0) {
-          ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
+    function getCell(x, y) {
+      return tiles.get(x + "," + y);
+    }
+    function findPath(startX, startY, targetX, targetY) {
+      let queue = [{ x: startX, y: startY, path: [] }];
+      let visited = new Set();
+      visited.add(startX + "," + startY);
+      const directions = [
+        { dx: 0, dy: -1 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+        { dx: 1, dy: 0 }
+      ];
+      while (queue.length > 0) {
+        let { x, y, path } = queue.shift();
+        if (x === targetX && y === targetY) {
+          return path.concat({ x, y });
+        }
+        for (let dir of directions) {
+          let nextX = x + dir.dx;
+          let nextY = y + dir.dy;
+          let key = nextX + "," + nextY;
+          if (!visited.has(key) && getCell(nextX, nextY) !== 1) {
+            visited.add(key);
+            queue.push({ x: nextX, y: nextY, path: path.concat({ x, y }) });
+          }
         }
       }
+      return [];
     }
-    function moveWithJoystick() {
+    function moveAlongPath() {
       const me = players.get(myId);
-      if (!me || !joystickActive) return;
-      let nextX = me.x;
-      let nextY = me.y;
-      if (joystickDirection.y < -0.3) nextY--;
-      if (joystickDirection.y > 0.3) nextY++;
-      if (joystickDirection.x < -0.3) nextX--;
-      if (joystickDirection.x > 0.3) nextX++;
-      if (nextX !== me.x || nextY !== me.y) {
-        if (nearby(me.x, me.y, nextX, nextY, 1) && getCell(nextX, nextY) === 0) {
-          ws.send(JSON.stringify({ type: 'move', x: nextX, y: nextY }));
-        }
+      if (!me || path.length === 0) return;
+      let nextPos = path.shift();
+      if (getCell(nextPos.x, nextPos.y) === 0) {
+        ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
+      } else {
+        path = [];
       }
     }
     setInterval(() => {
-      if (keysPressed.size > 0) moveWithKeys();
-      if (deviceType === 'mobile') moveWithJoystick();
+      moveAlongPath();
       updateArrows();
-    }, 100);
+    }, 200);
     function calculatePath(startX, startY, targetX, targetY) {
       let path = [];
       let dx = targetX - startX;
@@ -413,8 +442,8 @@
         for (let tx = 0; tx < gridSize; tx++) {
           let wx = sx + tx, wy = sy + ty;
           let xPx = tx * cellPx, yPx = ty * cellPx;
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-          ctx.lineWidth = 0.3;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"; // Увеличиваем контрастность сетки
+          ctx.lineWidth = 1; // Увеличиваем толщину линий сетки
           ctx.strokeRect(xPx, yPx, cellPx, cellPx);
           if (tiles.get(wx + "," + wy) == 1) {
             ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
@@ -507,12 +536,30 @@
         }
       });
     }
-    function getCell(x, y) {
-      return tiles.get(x + "," + y);
+    function updateGlobalChat() {
+      const chatDiv = document.getElementById('globalChat');
+      chatDiv.innerHTML = '';
+      globalMessages.forEach(msg => {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'global-chat-message';
+        msgDiv.textContent = `${msg.name}: ${msg.text}`;
+        chatDiv.appendChild(msgDiv);
+      });
+      chatDiv.scrollTop = chatDiv.scrollHeight;
+    }
+    function updatePlayerList() {
+      const playerListDiv = document.getElementById('playerList');
+      playerListDiv.innerHTML = '<strong>Игроки:</strong>';
+      players.forEach((player, id) => {
+        const playerDiv = document.createElement('div');
+        playerDiv.className = 'player-list-item';
+        playerDiv.textContent = player.name || 'Без имени';
+        playerListDiv.appendChild(playerDiv);
+      });
     }
     function canvasMouseDown(e) {
       const me = players.get(myId);
-      if (!me || selectedSlot === null) return;
+      if (!me) return;
       let rect = canvas.getBoundingClientRect();
       let x = e.clientX - rect.left;
       let y = e.clientY - rect.top;
@@ -520,7 +567,9 @@
       let ty = Math.floor(y / cellPx);
       let targetX = me.x - Math.floor(gridSize / 2) + tx;
       let targetY = me.y - Math.floor(gridSize / 2) + ty;
-      if (selectedSlot === 0) {
+      if (selectedSlot === null) {
+        path = findPath(me.x, me.y, targetX, targetY);
+      } else if (selectedSlot === 0) {
         if (nearby(me.x, me.y, targetX, targetY, 2) && getCell(targetX, targetY) == 0 && inventory[0].count > 0) {
           ws.send(JSON.stringify({ type: 'build', x: targetX, y: targetY }));
         }
@@ -560,10 +609,6 @@
       }
     });
     document.addEventListener('keydown', (e) => {
-      if (['w', 'W', 's', 'S', 'a', 'A', 'd', 'D'].includes(e.key)) {
-        e.preventDefault(); // Предотвращаем стандартное поведение (например, прокрутку)
-        keysPressed.add(e.key);
-      }
       if (e.key === 'q' || e.key === 'Q') {
         document.getElementById('chatInput').focus();
       }
@@ -574,9 +619,6 @@
         document.querySelector(`.inventory-slot[data-slot="${selectedSlot}"]`).classList.add('selected');
       }
     });
-    document.addEventListener('keyup', (e) => {
-      keysPressed.delete(e.key);
-    });
     const inventorySlots = document.querySelectorAll('.inventory-slot');
     inventorySlots.forEach(slot => {
       slot.addEventListener('click', () => {
@@ -585,40 +627,6 @@
         slot.classList.add('selected');
       });
     });
-    joystick.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      joystickActive = true;
-      updateJoystick(e);
-    });
-    joystick.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      updateJoystick(e);
-    });
-    joystick.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      joystickActive = false;
-      joystickDirection = { x: 0, y: 0 };
-      joystickKnob.style.left = '50%';
-      joystickKnob.style.top = '50%';
-    });
-    function updateJoystick(e) {
-      const touch = e.touches[0];
-      const rect = joystick.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      let dx = (touch.clientX - centerX) / (rect.width / 2);
-      let dy = (touch.clientY - centerY) / (rect.height / 2);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance > 1) {
-        dx /= distance;
-        dy /= distance;
-      }
-      joystickDirection = { x: dx, y: dy };
-      const knobX = 50 + dx * 30;
-      const knobY = 50 + dy * 30;
-      joystickKnob.style.left = `${knobX}%`;
-      joystickKnob.style.top = `${knobY}%`;
-    }
     canvas.onmousedown = canvasMouseDown;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
