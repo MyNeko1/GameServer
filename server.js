@@ -1,5 +1,7 @@
 const express = require('express');
 const WebSocket = require('ws');
+const { logPlayer } = require('./playersLog');
+const { logMessage } = require('./chatLog');
 const app = express();
 const server = app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
@@ -116,12 +118,20 @@ setInterval(() => {
     groupedUpdates.set(key, update);
   });
   const deduplicatedUpdates = Array.from(groupedUpdates.values());
+  const playerUpdates = new Map();
+  deduplicatedUpdates.forEach(update => {
+    if (update.type === 'updatePlayer') {
+      playerUpdates.set(update.id, update);
+    }
+  });
+  const finalUpdates = deduplicatedUpdates.filter(update => update.type !== 'updatePlayer');
+  playerUpdates.forEach(update => finalUpdates.push(update));
   wss.clients.forEach((client) => {
     if (client.readyState !== WebSocket.OPEN) return;
     const playerId = client.playerId;
     const player = players.get(playerId);
     if (!player) return;
-    const visibleUpdates = deduplicatedUpdates.filter((update) => {
+    const visibleUpdates = finalUpdates.filter((update) => {
       if (update.type === 'updatePlayer' || update.type === 'join') {
         const otherPlayer = update.type === 'join' ? update.player : players.get(update.id);
         return isInRange(player.x, player.y, otherPlayer.x, otherPlayer.y, 15);
@@ -130,7 +140,7 @@ setInterval(() => {
         return isInRange(player.x, player.y, update.x, update.y, 15);
       }
       if (update.type === 'chat') {
-        return true; // Глобальный чат виден всем
+        return true;
       }
       if (update.type === 'arrow') {
         return isInRange(player.x, player.y, update.x, update.y, 15) || isInRange(player.x, player.y, update.targetX, update.targetY, 15);
@@ -163,6 +173,7 @@ wss.on('connection', (ws) => {
     const player = players.get(id);
     if (data.type === 'setName') {
       player.name = data.name;
+      logPlayer(id, player.name, Date.now());
       queueUpdate({ type: 'updatePlayer', id, player });
     } else if (data.type === 'move') {
       const { x, y } = data;
@@ -189,6 +200,7 @@ wss.on('connection', (ws) => {
       }
     } else if (data.type === 'chat') {
       const timestamp = Date.now();
+      logMessage(id, player.name, data.text, timestamp);
       queueUpdate({ type: 'chat', id, text: data.text, timestamp });
     } else if (data.type === 'damage') {
       const target = players.get(data.targetId);
@@ -215,4 +227,7 @@ wss.on('connection', (ws) => {
 });
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
+});
+app.get('/items.js', (req, res) => {
+  res.sendFile(__dirname + '/items.js');
 });
