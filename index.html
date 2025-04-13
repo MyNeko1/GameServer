@@ -81,6 +81,7 @@
       padding: 5px;
       overflow-y: auto;
       font-size: 12px;
+      display: block;
     }
     .global-chat-message {
       margin-bottom: 5px;
@@ -96,6 +97,7 @@
       border-radius: 5px;
       padding: 5px;
       font-size: 12px;
+      display: block;
     }
     .player-list-item { margin-bottom: 3px; }
     .inventory {
@@ -186,7 +188,7 @@
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="global-chat" id="globalChat"></div>
-    <div class="player-list" id="playerList"></div>
+    <div class="player-list" id="playerList">Игроки:</div>
     <div class="inventory" id="inventory"></div>
     <button class="run-button" id="runButton">Бег</button>
     <button class="spawn-button" id="spawnButton">Спавн</button>
@@ -200,6 +202,7 @@
     const MAX_ENERGY = 100;
     const MESSAGE_LIFETIME = 30000;
     const CHAT_MESSAGE_LIFETIME = 10000;
+    const ARROW_SPEED = 200; // Интервал обновления стрел в миллисекундах
 
     // DOM-элементы (кэшируем)
     const canvas = document.getElementById("gameCanvas");
@@ -234,6 +237,7 @@
     let moveCooldown = 250;
     let lastMoveTime = 0;
     let lastUpdateTime = 0;
+    let lastArrowUpdate = 0;
     let isGameLoopRunning = false;
     let spawnPosition = { x: 0, y: 0 };
     let playerPositionsCache = new Map();
@@ -252,7 +256,7 @@
         Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
         inventory[0].count = players.get(myId).blocks || 0;
         const me = players.get(myId);
-        spawnPosition = { x: me.x, y: me.y };
+        spawnPosition = findNearestSpawn(me.x, me.y);
         updatePlayerList();
         needsRedraw = true;
       } else if (data.type === 'batch') {
@@ -329,6 +333,25 @@
       }
     }
 
+    function findNearestSpawn(startX, startY) {
+      let spawn = { x: startX, y: startY };
+      if (getCell(spawn.x, spawn.y) === 1) {
+        let found = false;
+        for (let r = 1; r < 100 && !found; r++) {
+          for (let dy = -r; dy <= r && !found; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              if ((Math.abs(dx) === r || Math.abs(dy) === r) && getCell(startX + dx, startY + dy) === 0) {
+                spawn = { x: startX + dx, y: startY + dy };
+                found = true;
+                break;
+              }
+            }
+          }
+        }
+      }
+      return spawn;
+    }
+
     function selectDevice(type) {
       deviceType = type;
       canvasPx = type === 'pc' ? 600 : 450;
@@ -337,6 +360,8 @@
       canvas.height = canvasPx;
       document.getElementById('deviceSelect').style.display = 'none';
       document.getElementById('game').style.display = 'block';
+      const me = players.get(myId);
+      if (me) spawnPosition = findNearestSpawn(me.x, me.y);
       renderInventory();
       needsRedraw = true;
       if (!isGameLoopRunning) {
@@ -421,6 +446,8 @@
       const me = players.get(myId);
       if (!me) return;
       const now = Date.now();
+      if (now - lastArrowUpdate < ARROW_SPEED) return;
+      lastArrowUpdate = now;
       let arrowsChanged = false;
       for (let i = arrows.length - 1; i >= 0; i--) {
         const arrow = arrows[i];
@@ -454,7 +481,7 @@
     function regenerateEnergy(delta) {
       if (!players.get(myId)) return;
       const newEnergy = Math.min(MAX_ENERGY, energy + (path.length ? 4 : 8) / 1000 * delta);
-      if (newEnergy !== energy) {
+      if (!isNaN(newEnergy) && newEnergy !== energy) {
         energy = newEnergy;
         needsRedraw = true;
       }
@@ -546,7 +573,11 @@
         ctx.save();
         ctx.translate(px, py);
         if (id === myId && isRunning) {
-          ctx.scale(1.2, 1.2);
+          ctx  (1.2, 1.2);
+          ctx.shadowColor = "yellow";
+          ctxForEach((line, j) => ctx.fillText(line, px, currentY + 5 + (j + 0.0) * lineHeight));
+          currentY += boxHeight +  (1.2, 1.2);
+          ctx.shadowBlur = 5;
         }
         ctx.fillStyle = player.color;
         ctx.font = "26px monospace";
@@ -686,9 +717,10 @@
     spawnButton.addEventListener('click', () => {
       const me = players.get(myId);
       if (!me) return;
-      ws.send(JSON.stringify({ type: 'move', x: spawnPosition.x, y: spawnPosition.y }));
+      const spawn = findNearestSpawn(spawnPosition.x, spawnPosition.y);
+      ws.send(JSON.stringify({ type: 'move', x: spawn.x, y: spawn.y }));
       path = [];
-      needsRedraw = true;
+      needsRedRedraw = true;
     });
 
     document.addEventListener('keydown', (e) => {
