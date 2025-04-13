@@ -135,7 +135,7 @@
       padding: 2px;
       border-radius: 3px;
     }
-    .run-button, .spawn-button {
+    .spawn-button {
       position: absolute;
       bottom: 10px;
       right: 10px;
@@ -147,9 +147,6 @@
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
       z-index: 10;
     }
-    .spawn-button {
-      bottom: 50px;
-    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
@@ -159,14 +156,12 @@
       .inventory { bottom: 10px; }
       .global-chat { width: 150px; height: 150px; font-size: 10px; }
       .player-list { width: 150px; font-size: 10px; top: 170px; }
-      .run-button { bottom: 60px; right: 10px; }
-      .spawn-button { bottom: 100px; right: 10px; }
+      .spawn-button { bottom: 60px; right: 10px; }
     }
     @media (min-width: 601px) {
       .chat { bottom: 100px; }
       .inventory { bottom: 40px; }
-      .run-button { bottom: 40px; right: 10px; }
-      .spawn-button { bottom: 80px; right: 10px; }
+      .spawn-button { bottom: 40px; right: 10px; }
     }
   </style>
 </head>
@@ -182,7 +177,7 @@
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
-    <div class="stats" id="stats">Здоровье: 100 | Энергия: 100 | Скорость: Обычная</div>
+    <div class="stats" id="stats">Здоровье: 100</div>
     <div class="chat">
       <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
@@ -190,19 +185,17 @@
     <div class="global-chat" id="globalChat"></div>
     <div class="player-list" id="playerList">Игроки:</div>
     <div class="inventory" id="inventory"></div>
-    <button class="run-button" id="runButton">Бег</button>
     <button class="spawn-button" id="spawnButton">Спавн</button>
   </div>
-  <audio id="runSound" src="https://www.myinstants.com/media/sounds/running.mp3"></audio>
   <script src="/items.js"></script>
   <script>
     // Константы
     const GRID_SIZE = 15;
     const MAX_ARROWS = 50;
-    const MAX_ENERGY = 100;
     const MESSAGE_LIFETIME = 30000;
     const CHAT_MESSAGE_LIFETIME = 10000;
     const ARROW_SPEED = 200; // Интервал обновления стрел в миллисекундах
+    const MOVE_COOLDOWN = 250; // Фиксированный интервал движения
 
     // DOM-элементы (кэшируем)
     const canvas = document.getElementById("gameCanvas");
@@ -213,9 +206,7 @@
     const globalChatEl = document.getElementById("globalChat");
     const playerListEl = document.getElementById("playerList");
     const inventoryEl = document.getElementById("inventory");
-    const runButton = document.getElementById("runButton");
     const spawnButton = document.getElementById("spawnButton");
-    const runSound = document.getElementById("runSound");
 
     // Глобальные переменные
     let deviceType = null;
@@ -232,9 +223,6 @@
     let path = [];
     let needsRedraw = false;
     let gridCache = null;
-    let energy = 100;
-    let isRunning = false;
-    let moveCooldown = 250;
     let lastMoveTime = 0;
     let lastUpdateTime = 0;
     let lastArrowUpdate = 0;
@@ -242,6 +230,9 @@
     let spawnPosition = { x: 0, y: 0 };
     let playerPositionsCache = new Map();
     let statsCache = '';
+    let playerRenderCache = new Map();
+    let messageRenderCache = new Map();
+    let inventorySlots = [];
 
     const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
     ws.onopen = () => {};
@@ -252,6 +243,7 @@
         Object.entries(data.players).forEach(([id, player]) => {
           players.set(id, player);
           playerPositionsCache.set(id, { x: player.x, y: player.y });
+          playerRenderCache.delete(id); // Сбрасываем кэш отрисовки
         });
         Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
         inventory[0].count = players.get(myId).blocks || 0;
@@ -266,13 +258,17 @@
           if (update.type === 'join') {
             players.set(update.id, update.player);
             playerPositionsCache.set(update.id, { x: update.player.x, y: update.player.y });
+            playerRenderCache.delete(update.id);
             playersChanged = true;
           } else if (update.type === 'updatePlayer') {
             const prevPos = playerPositionsCache.get(update.id);
             players.set(update.id, update.player);
             playerPositionsCache.set(update.id, { x: update.player.x, y: update.player.y });
             if (update.id === myId) inventory[0].count = update.player.blocks || 0;
-            if (prevPos.x !== update.player.x || prevPos.y !== update.player.y) playersChanged = true;
+            if (prevPos.x !== update.player.x || prevPos.y !== update.player.y) {
+              playersChanged = true;
+              playerRenderCache.delete(update.id);
+            }
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
             gridCache = null;
@@ -281,6 +277,8 @@
             players.delete(update.id);
             messages.delete(update.id);
             playerPositionsCache.delete(update.id);
+            playerRenderCache.delete(update.id);
+            messageRenderCache.delete(update.id);
             playersChanged = true;
           } else if (update.type === 'chat') {
             const { id, text, timestamp } = update;
@@ -295,12 +293,14 @@
             }
             if (!messages.has(id)) messages.set(id, []);
             messages.get(id).push({ text, timestamp });
+            messageRenderCache.delete(id);
             setTimeout(() => {
               const playerMessages = messages.get(id);
               if (playerMessages) {
                 const index = playerMessages.findIndex(m => m.timestamp === timestamp);
                 if (index !== -1) playerMessages.splice(index, 1);
                 if (playerMessages.length === 0) messages.delete(id);
+                messageRenderCache.delete(id);
               }
             }, CHAT_MESSAGE_LIFETIME);
           } else if (update.type === 'arrow') {
@@ -408,18 +408,10 @@
       const me = players.get(myId);
       if (!me || !path.length) return;
       const now = Date.now();
-      if (now - lastMoveTime < moveCooldown) return;
+      if (now - lastMoveTime < MOVE_COOLDOWN) return;
       lastMoveTime = now;
       const nextPos = path.shift();
       if (getCell(nextPos.x, nextPos.y) === 0) {
-        if (isRunning && energy >= 4) {
-          energy -= 4;
-          moveCooldown = 100;
-          runSound.currentTime = 0;
-          runSound.play().catch(() => {});
-        } else {
-          moveCooldown = 250;
-        }
         ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
         needsRedraw = true;
       } else {
@@ -449,51 +441,41 @@
       if (now - lastArrowUpdate < ARROW_SPEED) return;
       lastArrowUpdate = now;
       let arrowsChanged = false;
-      for (let i = arrows.length - 1; i >= 0; i--) {
-        const arrow = arrows[i];
+      arrows.forEach((arrow, index) => {
         const elapsed = (now - arrow.startTime) / 1000;
         if (elapsed > 10 || !arrow.path.length) {
-          arrows.splice(i, 1);
+          arrows.splice(index, 1);
           arrowsChanged = true;
-          continue;
+          return;
         }
         const nextPos = arrow.path.shift();
         arrow.currentX = nextPos.x;
         arrow.currentY = nextPos.y;
         if (tiles.get(arrow.currentX + "," + arrow.currentY) === 1) {
-          arrows.splice(i, 1);
+          arrows.splice(index, 1);
           arrowsChanged = true;
-          continue;
+          return;
         }
         for (const [id, player] of players) {
           if (id === arrow.shooterId) continue;
           if (Math.abs(player.x - arrow.currentX) <= 0.5 && Math.abs(player.y - arrow.currentY) <= 0.5) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
-            arrows.splice(i, 1);
+            arrows.splice(index, 1);
             arrowsChanged = true;
             break;
           }
         }
-      }
+      });
       if (arrowsChanged) needsRedraw = true;
-    }
-
-    function regenerateEnergy(delta) {
-      if (!players.get(myId)) return;
-      const newEnergy = Math.min(MAX_ENERGY, energy + (path.length ? 4 : 8) / 1000 * delta);
-      if (!isNaN(newEnergy) && newEnergy !== energy) {
-        energy = newEnergy;
-        needsRedraw = true;
-      }
     }
 
     function updateStats() {
       const me = players.get(myId);
       if (!me) return;
-      const newStats = `Здоровье: ${me.hp} | Энергия: ${Math.floor(energy)} | Скорость: ${isRunning ? 'Бег' : 'Обычная'}`;
+      const newStats = `Здоровье: ${me.hp}`;
       if (newStats !== statsCache) {
         statsCache = newStats;
-        statsEl.innerText = statsCache;
+        statsEl.innerHTML = statsCache;
       }
     }
 
@@ -567,65 +549,68 @@
       }
 
       for (const [id, player] of players) {
-        const px = (player.x - sx) * cellPx + cellPx / 2;
-        const py = (player.y - sy) * cellPx + cellPx / 2;
-        if (px < 0 || px > canvasPx || py < 0 || py > canvasPx) continue;
-        ctx.save();
-        ctx.translate(px, py);
-        if (id === myId && isRunning) {
-          ctx  (1.2, 1.2);
-          ctx.shadowColor = "yellow";
-          ctxForEach((line, j) => ctx.fillText(line, px, currentY + 5 + (j + 0.0) * lineHeight));
-          currentY += boxHeight +  (1.2, 1.2);
-          ctx.shadowBlur = 5;
+        const cacheKey = `${id}:${player.x}:${player.y}:${player.hp}:${player.name}`;
+        let renderData = playerRenderCache.get(id);
+        if (!renderData || renderData.key !== cacheKey) {
+          const px = (player.x - sx) * cellPx + cellPx / 2;
+          const py = (player.y - sy) * cellPx + cellPx / 2;
+          renderData = { key: cacheKey, px, py, visible: px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx };
+          playerRenderCache.set(id, renderData);
         }
+        if (!renderData.visible) continue;
         ctx.fillStyle = player.color;
         ctx.font = "26px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("@", 0, 0);
-        ctx.restore();
+        ctx.fillText("@", renderData.px, renderData.py);
         if (player.name) {
           ctx.font = "12px monospace";
           ctx.fillStyle = "white";
-          ctx.textAlign = "center";
-          ctx.fillText(player.name, px, py - 20);
-          ctx.fillText(`Здоровье: ${player.hp}`, px, py - 35);
+          ctx.fillText(player.name, renderData.px, renderData.py - 20);
+          ctx.fillText(`Здоровье: ${player.hp}`, renderData.px, renderData.py - 35);
         }
       }
 
       for (const [id, player] of players) {
-        const px = (player.x - sx) * cellPx + cellPx / 2;
-        const py = (player.y - sy) * cellPx + cellPx / 2;
-        if (px < 0 || px > canvasPx || py < 0 || py > canvasPx || !messages.has(id)) continue;
+        const playerRender = playerRenderCache.get(id);
+        if (!playerRender || !playerRender.visible || !messages.has(id)) continue;
         const playerMessages = messages.get(id);
-        const maxWidth = cellPx * 3;
-        let totalHeight = 0;
-        const lineHeight = 15;
-        for (const msg of playerMessages) totalHeight += wrapText(msg.text, maxWidth).length * lineHeight + 10;
-        let currentY = py - 50 - totalHeight;
-        for (const msg of playerMessages) {
-          const lines = wrapText(msg.text, maxWidth);
-          const boxHeight = lines.length * lineHeight + 10;
-          const boxWidth = maxWidth + 10;
+        const cacheKey = `${id}:${playerMessages.map(m => m.text + m.timestamp).join(':')}`;
+        let messageData = messageRenderCache.get(id);
+        if (!messageData || messageData.key !== cacheKey) {
+          const maxWidth = cellPx * 3;
+          let totalHeight = 0;
+          const lineHeight = 15;
+          const boxes = [];
+          for (const msg of playerMessages) totalHeight += wrapText(msg.text, maxWidth).length * lineHeight + 10;
+          let currentY = playerRender.py - 50 - totalHeight;
+          for (const msg of playerMessages) {
+            const lines = wrapText(msg.text, maxWidth);
+            const boxHeight = lines.length * lineHeight + 10;
+            const boxWidth = maxWidth + 10;
+            boxes.push({ lines, boxWidth, boxHeight, currentY });
+            currentY += boxHeight + 5;
+          }
+          messageData = { key: cacheKey, boxes };
+          messageRenderCache.set(id, messageData);
+        }
+        messageData.boxes.forEach(({ lines, boxWidth, boxHeight, currentY }) => {
           ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
           ctx.strokeStyle = "white";
           ctx.lineWidth = 1;
-          ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
-          ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+          ctx.fillRect(playerRender.px - boxWidth / 2, currentY, boxWidth, boxHeight);
+          ctx.strokeRect(playerRender.px - boxWidth / 2, currentY, boxWidth, boxHeight);
           ctx.font = "12px monospace";
           ctx.fillStyle = "white";
           ctx.textBaseline = "middle";
-          lines.forEach((line, j) => ctx.fillText(line, px, currentY + 5 + (j + 0.5) * lineHeight));
-          currentY += boxHeight + 5;
-        }
+          lines.forEach((line, j) => ctx.fillText(line, playerRender.px, currentY + 5 + (j + 0.5) * lineHeight));
+        });
       }
 
-      const slots = inventoryEl.querySelectorAll('.inventory-slot');
-      for (let i = 0; i < slots.length; i++) {
-        const countEl = slots[i].querySelector('.count');
-        if (countEl) countEl.innerText = inventory[i].count || 0;
-      }
+      inventorySlots.forEach((slot, i) => {
+        const countEl = slot.querySelector('.count');
+        if (countEl) countEl.innerHTML = inventory[i].count || 0;
+      });
     }
 
     let chatUpdatePending = false;
@@ -633,7 +618,7 @@
       if (chatUpdatePending) return;
       chatUpdatePending = true;
       requestAnimationFrame(() => {
-        globalChatEl.innerText = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('\n');
+        globalChatEl.innerHTML = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('<br>');
         globalChatEl.scrollTop = globalChatEl.scrollHeight;
         chatUpdatePending = false;
       });
@@ -647,7 +632,7 @@
         const playerNames = Array.from(players.values())
           .filter(player => player.name && player.name.trim() !== '')
           .map(player => player.name);
-        playerListEl.innerText = playerNames.length ? `Игроки:\n${playerNames.join('\n')}` : 'Игроки:\n(нет игроков)';
+        playerListEl.innerHTML = playerNames.length ? `Игроки:<br>${playerNames.join('<br>')}` : 'Игроки:<br>(нет игроков)';
         playerListUpdatePending = false;
       });
     }
@@ -664,11 +649,12 @@
             slot.classList.remove('selected');
           } else {
             selectedSlot = index;
-            inventoryEl.querySelectorAll('.inventory-slot').forEach(s => s.classList.remove('selected'));
+            inventorySlots.forEach(s => s.classList.remove('selected'));
             slot.classList.add('selected');
           }
         });
         inventoryEl.appendChild(slot);
+        inventorySlots.push(slot);
       });
     }
 
@@ -707,20 +693,13 @@
       }
     });
 
-    runButton.addEventListener('click', () => {
-      isRunning = !isRunning;
-      runButton.innerText = isRunning ? 'Ходьба' : 'Бег';
-      moveCooldown = isRunning ? 100 : 250;
-      needsRedraw = true;
-    });
-
     spawnButton.addEventListener('click', () => {
       const me = players.get(myId);
       if (!me) return;
       const spawn = findNearestSpawn(spawnPosition.x, spawnPosition.y);
       ws.send(JSON.stringify({ type: 'move', x: spawn.x, y: spawn.y }));
       path = [];
-      needsRedRedraw = true;
+      needsRedraw = true;
     });
 
     document.addEventListener('keydown', (e) => {
@@ -734,11 +713,11 @@
         const index = parseInt(e.key) - 1;
         if (selectedSlot === index) {
           selectedSlot = null;
-          inventoryEl.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.remove('selected');
+          inventorySlots[index].classList.remove('selected');
         } else {
           selectedSlot = index;
-          inventoryEl.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
-          inventoryEl.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.add('selected');
+          inventorySlots.forEach(slot => slot.classList.remove('selected'));
+          inventorySlots[index].classList.add('selected');
         }
       }
     });
@@ -760,7 +739,6 @@
 
       moveAlongPath();
       updateArrows();
-      regenerateEnergy(delta);
       updateStats();
       if (needsRedraw) {
         draw();
