@@ -196,8 +196,8 @@
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="Введите имя" maxlength="10">
-    <button onclick="proceedToDeviceSelect()">Войти</button>
+    <input type="text" id="nameInput" placeholder="как звать путник?" maxlength="10">
+    <button onclick="proceedToDeviceSelect()">играть</button>
   </div>
   <div id="deviceSelect">
     <p>Ты с чем сидишь?</p>
@@ -206,9 +206,9 @@
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
-    <div class="stats" id="stats">HP: 100 | Energy: 100 | Speed: Normal</div>
+    <div class="stats" id="stats"здоровье: 100 | энергия: 100 | скорость: норм</div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="Введите сообщение" maxlength="50">
+      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="global-chat" id="globalChat"></div>
@@ -216,7 +216,7 @@
     <div class="inventory" id="inventory"></div>
     <button class="run-button" id="runButton">Бег</button>
   </div>
-  <script src="/client/items.js"></script>
+  <script src="/items.js"></script>
   <script>
     let gridSize = 15, cellPx = 30, canvasPx = gridSize * cellPx;
     let deviceType = null;
