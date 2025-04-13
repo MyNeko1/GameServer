@@ -21,11 +21,11 @@
       touch-action: none;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
-    .inv {
+    .stats {
       position: absolute;
       top: 10px;
       left: 10px;
-      font-size: 16px;
+      font-size: 14px;
       background: rgba(0, 0, 0, 0.7);
       padding: 5px;
       border: 1px solid white;
@@ -139,6 +139,17 @@
       padding: 2px;
       border-radius: 3px;
     }
+    .run-button {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: #333;
+      color: white;
+      border: 1px solid white;
+      padding: 5px 10px;
+      cursor: pointer;
+      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput {
         width: 150px;
@@ -185,8 +196,8 @@
 </head>
 <body>
   <div id="login">
-    <input type="text" id="nameInput" placeholder="как звать путник?" maxlength="10">
-    <button onclick="proceedToDeviceSelect()">играть</button>
+    <input type="text" id="nameInput" placeholder="Введите имя" maxlength="10">
+    <button onclick="proceedToDeviceSelect()">Войти</button>
   </div>
   <div id="deviceSelect">
     <p>Ты с чем сидишь?</p>
@@ -195,16 +206,17 @@
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
-    <div class="inv" id="invCount">HP: 100</div>
+    <div class="stats" id="stats">HP: 100 | Energy: 100 | Speed: Normal</div>
     <div class="chat">
-      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
+      <input type="text" id="chatInput" placeholder="Введите сообщение" maxlength="50">
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="global-chat" id="globalChat"></div>
     <div class="player-list" id="playerList"></div>
     <div class="inventory" id="inventory"></div>
+    <button class="run-button" id="runButton">Бег</button>
   </div>
-  <script src="/items.js"></script>
+  <script src="/client/items.js"></script>
   <script>
     let gridSize = 15, cellPx = 30, canvasPx = gridSize * cellPx;
     let deviceType = null;
@@ -223,10 +235,14 @@
     let path = [];
     let needsRedraw = false;
     let gridCache = null;
-    const ws = new WebSocket('wss://' + window.location.hostname);
-    ws.onopen = () => {
-      console.log('Connected to server');
-    };
+    let energy = 100;
+    let maxEnergy = 100;
+    let isRunning = false;
+    let moveCooldown = 250;
+    let lastMoveTime = 0;
+    let lastUpdateTime = 0;
+    const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
+    ws.onopen = () => {};
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
       if (data.type === 'init') {
@@ -262,7 +278,7 @@
               setTimeout(() => {
                 globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
                 updateGlobalChat();
-              }, 60000);
+              }, 30000);
             }
             if (!messages.has(id)) messages.set(id, []);
             messages.get(id).push({ text, timestamp });
@@ -293,12 +309,7 @@
         needsRedraw = true;
       }
     };
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
+    ws.onclose = () => {};
     function proceedToDeviceSelect() {
       const name = document.getElementById('nameInput').value.trim();
       if (name) {
@@ -322,29 +333,30 @@
       document.getElementById('game').style.display = 'block';
       renderInventory();
       needsRedraw = true;
+      gameLoop();
     }
     function nearby(x1, y1, x2, y2, range = 1) {
       return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
     }
     function getCell(x, y) {
-      return tiles.get(x + "," + y);
+      return tiles.get(x + "," + y) || 0;
     }
     function findPath(startX, startY, targetX, targetY) {
-      let queue = [{ x: startX, y: startY, path: [], cost: 0 }];
+      let queue = [{ x: startX, y: startY, path: [] }];
       let visited = new Set();
       visited.add(startX + "," + startY);
       const directions = [
-        { dx: 0, dy: -1, cost: 10 },
-        { dx: 0, dy: 1, cost: 10 },
-        { dx: -1, dy: 0, cost: 10 },
-        { dx: 1, dy: 0, cost: 10 },
-        { dx: -1, dy: -1, cost: 14 },
-        { dx: 1, dy: -1, cost: 14 },
-        { dx: -1, dy: 1, cost: 14 },
-        { dx: 1, dy: 1, cost: 14 }
+        { dx: 0, dy: -1 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+        { dx: 1, dy: 0 },
+        { dx: -1, dy: -1 },
+        { dx: 1, dy: -1 },
+        { dx: -1, dy: 1 },
+        { dx: 1, dy: 1 }
       ];
       let iterations = 0;
-      const maxIterations = 1000;
+      const maxIterations = 500;
       while (queue.length > 0 && iterations < maxIterations) {
         iterations++;
         let { x, y, path } = queue.shift();
@@ -360,29 +372,29 @@
             queue.push({ x: nextX, y: nextY, path: path.concat({ x, y }) });
           }
         }
-        queue.sort((a, b) => a.cost - b.cost);
       }
       return [];
     }
     function moveAlongPath() {
       const me = players.get(myId);
       if (!me || path.length === 0) return;
+      let now = Date.now();
+      if (now - lastMoveTime < moveCooldown) return;
+      lastMoveTime = now;
       let nextPos = path.shift();
       if (getCell(nextPos.x, nextPos.y) === 0) {
+        if (isRunning && energy >= 4) {
+          energy -= 4;
+          moveCooldown = 100;
+        } else {
+          moveCooldown = 250;
+        }
         ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
       } else {
         path = [];
       }
       needsRedraw = true;
     }
-    setInterval(() => {
-      moveAlongPath();
-      updateArrows();
-      if (needsRedraw) {
-        draw();
-        needsRedraw = false;
-      }
-    }, 200);
     function calculatePath(startX, startY, targetX, targetY) {
       let path = [];
       let dx = targetX - startX;
@@ -403,12 +415,9 @@
     function updateArrows() {
       const me = players.get(myId);
       if (!me) return;
-      let sx = me.x - Math.floor(gridSize / 2);
-      let sy = me.y - Math.floor(gridSize / 2);
       arrows = arrows.filter(arrow => {
         const elapsed = (Date.now() - arrow.startTime) / 1000;
-        if (elapsed > 10) return false;
-        if (arrow.path.length === 0) return false;
+        if (elapsed > 10 || arrow.path.length === 0) return false;
         let nextPos = arrow.path.shift();
         arrow.currentX = nextPos.x;
         arrow.currentY = nextPos.y;
@@ -423,6 +432,21 @@
         return true;
       });
       needsRedraw = true;
+    }
+    function regenerateEnergy(delta) {
+      const me = players.get(myId);
+      if (!me) return;
+      if (path.length > 0) {
+        energy = Math.min(maxEnergy, energy + (4 / 1000) * delta);
+      } else {
+        energy = Math.min(maxEnergy, energy + (8 / 1000) * delta);
+      }
+    }
+    function updateStats() {
+      const me = players.get(myId);
+      if (!me) return;
+      const speed = isRunning ? 'Running' : 'Normal';
+      document.getElementById("stats").textContent = `HP: ${me.hp} | Energy: ${Math.floor(energy)} | Speed: ${speed}`;
     }
     function wrapText(text, maxWidth) {
       const words = text.split('');
@@ -458,10 +482,6 @@
             if (tiles.get(wx + "," + wy) == 1) {
               offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
               offscreenCtx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
-              offscreenCtx.shadowColor = "rgba(255, 255, 255, 0.3)";
-              offscreenCtx.shadowBlur = 5;
-              offscreenCtx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
-              offscreenCtx.shadowBlur = 0;
             }
           }
         }
@@ -479,8 +499,7 @@
       for (let arrow of arrows) {
         let px1 = (arrow.currentX - sx) * cellPx + cellPx / 2;
         let py1 = (arrow.currentY - sy) * cellPx + cellPx / 2;
-        let px2 = px1;
-        let py2 = py1;
+        let px2 = px1, py2 = py1;
         if (arrow.path.length > 0) {
           let nextPos = arrow.path[0];
           px2 = (nextPos.x - sx) * cellPx + cellPx / 2;
@@ -498,63 +517,55 @@
       for (let [id, player] of players) {
         let px = (player.x - sx) * cellPx + cellPx / 2;
         let py = (player.y - sy) * cellPx + cellPx / 2;
-        if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
-          ctx.fillStyle = player.color;
-          ctx.font = "26px monospace";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-          ctx.shadowBlur = 3;
-          ctx.fillText("@", px, py);
-          ctx.shadowBlur = 0;
-          if (player.name) {
-            ctx.font = "12px monospace";
-            ctx.fillStyle = "white";
-            ctx.fillText(player.name, px, py - 20);
-            ctx.fillText(`HP: ${player.hp}`, px, py - 35);
-          }
+        if (px < 0 || px > canvasPx || py < 0 || py > canvasPx) continue;
+        ctx.fillStyle = player.color;
+        ctx.font = "26px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("@", px, py);
+        if (player.name) {
+          ctx.font = "12px monospace";
+          ctx.fillStyle = "white";
+          ctx.fillText(player.name, px, py - 20);
+          ctx.fillText(`HP: ${player.hp}`, px, py - 35);
         }
       }
       for (let [id, player] of players) {
         let px = (player.x - sx) * cellPx + cellPx / 2;
         let py = (player.y - sy) * cellPx + cellPx / 2;
-        if (px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx) {
-          if (messages.has(id)) {
-            const playerMessages = messages.get(id);
-            const maxWidth = cellPx * 3;
-            let totalHeight = 0;
-            const lineHeight = 15;
-            for (let i = 0; i < playerMessages.length; i++) {
-              const lines = wrapText(playerMessages[i].text, maxWidth);
-              totalHeight += lines.length * lineHeight + 10;
+        if (px < 0 || px > canvasPx || py < 0 || py > canvasPx) continue;
+        if (messages.has(id)) {
+          const playerMessages = messages.get(id);
+          const maxWidth = cellPx * 3;
+          let totalHeight = 0;
+          const lineHeight = 15;
+          for (let i = 0; i < playerMessages.length; i++) {
+            const lines = wrapText(playerMessages[i].text, maxWidth);
+            totalHeight += lines.length * lineHeight + 10;
+          }
+          let currentY = py - 50 - totalHeight;
+          for (let i = 0; i < playerMessages.length; i++) {
+            const lines = wrapText(playerMessages[i].text, maxWidth);
+            const boxHeight = lines.length * lineHeight + 10;
+            const boxWidth = maxWidth + 10;
+            ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 1;
+            ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+            ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+            ctx.font = "12px monospace";
+            ctx.fillStyle = "white";
+            ctx.textBaseline = "middle";
+            for (let j = 0; j < lines.length; j++) {
+              ctx.fillText(lines[j], px, currentY + 5 + (j + 0.5) * lineHeight);
             }
-            let currentY = py - 50 - totalHeight;
-            for (let i = 0; i < playerMessages.length; i++) {
-              const lines = wrapText(playerMessages[i].text, maxWidth);
-              const boxHeight = lines.length * lineHeight + 10;
-              const boxWidth = maxWidth + 10;
-              ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-              ctx.strokeStyle = "white";
-              ctx.lineWidth = 1;
-              ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
-              ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
-              ctx.font = "12px monospace";
-              ctx.fillStyle = "white";
-              ctx.textBaseline = "middle";
-              for (let j = 0; j < lines.length; j++) {
-                ctx.fillText(lines[j], px, currentY + 5 + (j + 0.5) * lineHeight);
-              }
-              currentY += boxHeight + 5;
-            }
+            currentY += boxHeight + 5;
           }
         }
       }
-      document.getElementById("invCount").textContent = `HP: ${me.hp}`;
       document.querySelectorAll('.inventory-slot').forEach((slot, index) => {
         const countEl = slot.querySelector('.count');
-        if (countEl) {
-          countEl.textContent = inventory[index].count || 0;
-        }
+        if (countEl) countEl.textContent = inventory[index].count || 0;
       });
     }
     let chatUpdatePending = false;
@@ -584,7 +595,7 @@
         players.forEach((player, id) => {
           const playerDiv = document.createElement('div');
           playerDiv.className = 'player-list-item';
-          playerDiv.textContent = player.name || 'ноу нейм';
+          playerDiv.textContent = player.name || 'Без имени';
           playerListDiv.appendChild(playerDiv);
         });
         playerListUpdatePending = false;
@@ -600,9 +611,14 @@
         slot.innerHTML = `<span>${item.name}</span>` + (item.count !== undefined ? `<span class="count">${item.count}</span>` : '');
         inventoryDiv.appendChild(slot);
         slot.addEventListener('click', () => {
-          selectedSlot = parseInt(slot.getAttribute('data-slot'));
-          document.querySelectorAll('.inventory-slot').forEach(s => s.classList.remove('selected'));
-          slot.classList.add('selected');
+          if (selectedSlot === index) {
+            selectedSlot = null;
+            slot.classList.remove('selected');
+          } else {
+            selectedSlot = index;
+            document.querySelectorAll('.inventory-slot').forEach(s => s.classList.remove('selected'));
+            slot.classList.add('selected');
+          }
         });
       });
     }
@@ -641,6 +657,11 @@
         }
       }
     });
+    document.getElementById('runButton').addEventListener('click', () => {
+      isRunning = !isRunning;
+      document.getElementById('runButton').textContent = isRunning ? 'Ходьба' : 'Бег';
+      moveCooldown = isRunning ? 100 : 250;
+    });
     document.addEventListener('keydown', (e) => {
       const activeElement = document.activeElement;
       const isInputFocused = activeElement.tagName === 'INPUT' && (activeElement.id === 'nameInput' || activeElement.id === 'chatInput');
@@ -650,9 +671,15 @@
         }
         if (['1', '2', '3', '4', '5'].includes(e.key)) {
           e.preventDefault();
-          selectedSlot = parseInt(e.key) - 1;
-          document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
-          document.querySelector(`.inventory-slot[data-slot="${selectedSlot}"]`).classList.add('selected');
+          let index = parseInt(e.key) - 1;
+          if (selectedSlot === index) {
+            selectedSlot = null;
+            document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.remove('selected');
+          } else {
+            selectedSlot = index;
+            document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
+            document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.add('selected');
+          }
         }
       }
     });
@@ -666,6 +693,20 @@
       });
       canvas.dispatchEvent(mouseDown);
     };
+    function gameLoop(timestamp) {
+      if (!lastUpdateTime) lastUpdateTime = timestamp;
+      const delta = timestamp - lastUpdateTime;
+      lastUpdateTime = timestamp;
+      moveAlongPath();
+      updateArrows();
+      regenerateEnergy(delta);
+      updateStats();
+      if (needsRedraw) {
+        draw();
+        needsRedraw = false;
+      }
+      requestAnimationFrame(gameLoop);
+    }
   </script>
 </body>
 </html>
