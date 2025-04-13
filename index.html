@@ -6,7 +6,7 @@
   <style>
     body {
       background: #000;
-      color: white;
+      color: #fff;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -17,7 +17,7 @@
       font-family: monospace;
     }
     canvas {
-      border: 1px solid white;
+      border: 1px solid #fff;
       touch-action: none;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
@@ -28,7 +28,7 @@
       font-size: 14px;
       background: rgba(0, 0, 0, 0.7);
       padding: 5px;
-      border: 1px solid white;
+      border: 1px solid #fff;
       border-radius: 5px;
     }
     #login, #deviceSelect {
@@ -38,16 +38,12 @@
       transform: translate(-50%, -50%);
       background: #333;
       padding: 20px;
-      border: 1px solid white;
+      border: 1px solid #fff;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
       text-align: center;
     }
-    #deviceSelect {
-      display: none;
-    }
-    #game {
-      display: none;
-    }
+    #deviceSelect { display: none; }
+    #game { display: none; }
     .chat {
       position: absolute;
       bottom: 70px;
@@ -58,8 +54,8 @@
     }
     #chatInput {
       background: #333;
-      color: white;
-      border: 1px solid white;
+      color: #fff;
+      border: 1px solid #fff;
       padding: 5px;
       font-size: 14px;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
@@ -67,8 +63,8 @@
     }
     #sendChat {
       background: #333;
-      color: white;
-      border: 1px solid white;
+      color: #fff;
+      border: 1px solid #fff;
       padding: 5px 10px;
       cursor: pointer;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
@@ -80,7 +76,7 @@
       width: 200px;
       height: 200px;
       background: rgba(0, 0, 0, 0.7);
-      border: 1px solid white;
+      border: 1px solid #fff;
       border-radius: 5px;
       padding: 5px;
       overflow-y: auto;
@@ -96,14 +92,12 @@
       right: 10px;
       width: 200px;
       background: rgba(0, 0, 0, 0.7);
-      border: 1px solid white;
+      border: 1px solid #fff;
       border-radius: 5px;
       padding: 5px;
       font-size: 12px;
     }
-    .player-list-item {
-      margin-bottom: 3px;
-    }
+    .player-list-item { margin-bottom: 3px; }
     .inventory {
       position: absolute;
       bottom: 10px;
@@ -116,7 +110,7 @@
       width: 50px;
       height: 50px;
       background: rgba(255, 255, 255, 0.2);
-      border: 2px solid white;
+      border: 2px solid #fff;
       border-radius: 5px;
       display: flex;
       justify-content: center;
@@ -144,53 +138,28 @@
       bottom: 10px;
       right: 10px;
       background: #333;
-      color: white;
-      border: 1px solid white;
+      color: #fff;
+      border: 1px solid #fff;
       padding: 5px 10px;
       cursor: pointer;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+      z-index: 10;
     }
     @media (max-width: 600px), (orientation: landscape) {
-      #chatInput {
-        width: 150px;
-        font-size: 12px;
-      }
-      #sendChat {
-        padding: 5px;
-        font-size: 12px;
-      }
-      .inventory-slot {
-        width: 40px;
-        height: 40px;
-        font-size: 10px;
-      }
-      .inventory-slot .count {
-        font-size: 8px;
-      }
-      .chat {
-        bottom: 70px;
-      }
-      .inventory {
-        bottom: 10px;
-      }
-      .global-chat {
-        width: 150px;
-        height: 150px;
-        font-size: 10px;
-      }
-      .player-list {
-        width: 150px;
-        font-size: 10px;
-        top: 170px;
-      }
+      #chatInput { width: 150px; font-size: 12px; }
+      #sendChat { padding: 5px; font-size: 12px; }
+      .inventory-slot { width: 40px; height: 40px; font-size: 10px; }
+      .inventory-slot .count { font-size: 8px; }
+      .chat { bottom: 70px; }
+      .inventory { bottom: 10px; }
+      .global-chat { width: 150px; height: 150px; font-size: 10px; }
+      .player-list { width: 150px; font-size: 10px; top: 170px; }
+      .run-button { bottom: 60px; right: 10px; }
     }
     @media (min-width: 601px) {
-      .chat {
-        bottom: 100px;
-      }
-      .inventory {
-        bottom: 40px;
-      }
+      .chat { bottom: 100px; }
+      .inventory { bottom: 40px; }
+      .run-button { bottom: 40px; right: 10px; }
     }
   </style>
 </head>
@@ -206,7 +175,7 @@
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
-    <div class="stats" id="stats"здоровье: 100 | энергия: 100 | скорость: норм</div>
+    <div class="stats" id="stats">Здоровье: 100 | Энергия: 100 | Скорость: Обычная</div>
     <div class="chat">
       <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
       <button id="sendChat">ГАФ</button>
@@ -218,16 +187,17 @@
   </div>
   <script src="/items.js"></script>
   <script>
-    let gridSize = 15, cellPx = 30, canvasPx = gridSize * cellPx;
+    const gridSize = 15, cellPx = 30;
+    let canvasPx = gridSize * cellPx;
     let deviceType = null;
-    let canvas = document.getElementById("gameCanvas");
-    let ctx = canvas.getContext("2d");
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = true;
-    let tiles = new Map();
-    let players = new Map();
-    let messages = new Map();
+    const tiles = new Map();
+    const players = new Map();
+    const messages = new Map();
     let globalMessages = [];
-    let arrows = [];
+    const arrows = [];
     const maxArrows = 50;
     let myId = null;
     let selectedSlot = null;
@@ -236,19 +206,20 @@
     let needsRedraw = false;
     let gridCache = null;
     let energy = 100;
-    let maxEnergy = 100;
+    const maxEnergy = 100;
     let isRunning = false;
     let moveCooldown = 250;
     let lastMoveTime = 0;
     let lastUpdateTime = 0;
+
     const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
     ws.onopen = () => {};
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
       if (data.type === 'init') {
         myId = data.id;
-        players = new Map(Object.entries(data.players));
-        tiles = new Map(Object.entries(data.tiles));
+        Object.entries(data.players).forEach(([id, player]) => players.set(id, player));
+        Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
         inventory[0].count = players.get(myId).blocks || 0;
         updatePlayerList();
         needsRedraw = true;
@@ -259,9 +230,7 @@
             updatePlayerList();
           } else if (update.type === 'updatePlayer') {
             players.set(update.id, update.player);
-            if (update.id === myId) {
-              inventory[0].count = update.player.blocks || 0;
-            }
+            if (update.id === myId) inventory[0].count = update.player.blocks || 0;
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
             gridCache = null;
@@ -310,6 +279,7 @@
       }
     };
     ws.onclose = () => {};
+
     function proceedToDeviceSelect() {
       const name = document.getElementById('nameInput').value.trim();
       if (name) {
@@ -318,15 +288,11 @@
         document.getElementById('deviceSelect').style.display = 'block';
       }
     }
+
     function selectDevice(type) {
       deviceType = type;
-      if (type === 'pc') {
-        canvasPx = 600;
-        cellPx = canvasPx / gridSize;
-      } else {
-        canvasPx = 450;
-        cellPx = canvasPx / gridSize;
-      }
+      canvasPx = type === 'pc' ? 600 : 450;
+      cellPx = canvasPx / gridSize;
       canvas.width = canvasPx;
       canvas.height = canvasPx;
       document.getElementById('deviceSelect').style.display = 'none';
@@ -335,38 +301,32 @@
       needsRedraw = true;
       gameLoop();
     }
+
     function nearby(x1, y1, x2, y2, range = 1) {
       return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
     }
+
     function getCell(x, y) {
       return tiles.get(x + "," + y) || 0;
     }
+
     function findPath(startX, startY, targetX, targetY) {
-      let queue = [{ x: startX, y: startY, path: [] }];
-      let visited = new Set();
-      visited.add(startX + "," + startY);
+      const queue = [{ x: startX, y: startY, path: [] }];
+      const visited = new Set([startX + "," + startY]);
       const directions = [
-        { dx: 0, dy: -1 },
-        { dx: 0, dy: 1 },
-        { dx: -1, dy: 0 },
-        { dx: 1, dy: 0 },
-        { dx: -1, dy: -1 },
-        { dx: 1, dy: -1 },
-        { dx: -1, dy: 1 },
-        { dx: 1, dy: 1 }
+        { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
+        { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
+        { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
       ];
       let iterations = 0;
       const maxIterations = 500;
-      while (queue.length > 0 && iterations < maxIterations) {
-        iterations++;
-        let { x, y, path } = queue.shift();
-        if (x === targetX && y === targetY) {
-          return path.concat({ x, y });
-        }
-        for (let dir of directions) {
-          let nextX = x + dir.dx;
-          let nextY = y + dir.dy;
-          let key = nextX + "," + nextY;
+      while (queue.length && iterations++ < maxIterations) {
+        const { x, y, path } = queue.shift();
+        if (x === targetX && y === targetY) return path.concat({ x, y });
+        for (const { dx, dy } of directions) {
+          const nextX = x + dx, nextY = y + dy;
+          const key = nextX + "," + nextY;
           if (!visited.has(key) && getCell(nextX, nextY) !== 1) {
             visited.add(key);
             queue.push({ x: nextX, y: nextY, path: path.concat({ x, y }) });
@@ -375,13 +335,14 @@
       }
       return [];
     }
+
     function moveAlongPath() {
       const me = players.get(myId);
-      if (!me || path.length === 0) return;
-      let now = Date.now();
+      if (!me || !path.length) return;
+      const now = Date.now();
       if (now - lastMoveTime < moveCooldown) return;
       lastMoveTime = now;
-      let nextPos = path.shift();
+      const nextPos = path.shift();
       if (getCell(nextPos.x, nextPos.y) === 0) {
         if (isRunning && energy >= 4) {
           energy -= 4;
@@ -395,16 +356,14 @@
       }
       needsRedraw = true;
     }
+
     function calculatePath(startX, startY, targetX, targetY) {
-      let path = [];
-      let dx = targetX - startX;
-      let dy = targetY - startY;
-      let steps = Math.max(Math.abs(dx), Math.abs(dy));
-      if (steps === 0) return path;
-      let xStep = dx / steps;
-      let yStep = dy / steps;
-      let x = startX;
-      let y = startY;
+      const path = [];
+      const dx = targetX - startX, dy = targetY - startY;
+      const steps = Math.max(Math.abs(dx), Math.abs(dy));
+      if (!steps) return path;
+      const xStep = dx / steps, yStep = dy / steps;
+      let x = startX, y = startY;
       for (let i = 0; i < steps; i++) {
         x += xStep;
         y += yStep;
@@ -412,52 +371,57 @@
       }
       return path;
     }
+
     function updateArrows() {
       const me = players.get(myId);
       if (!me) return;
-      arrows = arrows.filter(arrow => {
-        const elapsed = (Date.now() - arrow.startTime) / 1000;
-        if (elapsed > 10 || arrow.path.length === 0) return false;
-        let nextPos = arrow.path.shift();
+      const now = Date.now();
+      for (let i = arrows.length - 1; i >= 0; i--) {
+        const arrow = arrows[i];
+        const elapsed = (now - arrow.startTime) / 1000;
+        if (elapsed > 10 || !arrow.path.length) {
+          arrows.splice(i, 1);
+          continue;
+        }
+        const nextPos = arrow.path.shift();
         arrow.currentX = nextPos.x;
         arrow.currentY = nextPos.y;
-        if (tiles.get(arrow.currentX + "," + arrow.currentY) == 1) return false;
-        for (let [id, player] of players) {
+        if (tiles.get(arrow.currentX + "," + arrow.currentY) === 1) {
+          arrows.splice(i, 1);
+          continue;
+        }
+        for (const [id, player] of players) {
           if (id === arrow.shooterId) continue;
           if (Math.abs(player.x - arrow.currentX) <= 0.5 && Math.abs(player.y - arrow.currentY) <= 0.5) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
-            return false;
+            arrows.splice(i, 1);
+            break;
           }
         }
-        return true;
-      });
+      }
       needsRedraw = true;
     }
+
     function regenerateEnergy(delta) {
-      const me = players.get(myId);
-      if (!me) return;
-      if (path.length > 0) {
-        energy = Math.min(maxEnergy, energy + (4 / 1000) * delta);
-      } else {
-        energy = Math.min(maxEnergy, energy + (8 / 1000) * delta);
-      }
+      if (!players.get(myId)) return;
+      energy = Math.min(maxEnergy, energy + (path.length ? 4 : 8) / 1000 * delta);
     }
+
     function updateStats() {
       const me = players.get(myId);
       if (!me) return;
-      const speed = isRunning ? 'Running' : 'Normal';
-      document.getElementById("stats").textContent = `HP: ${me.hp} | Energy: ${Math.floor(energy)} | Speed: ${speed}`;
+      document.getElementById("stats").innerText = `Здоровье: ${me.hp} | Энергия: ${Math.floor(energy)} | Скорость: ${isRunning ? 'Бег' : 'Обычная'}`;
     }
+
     function wrapText(text, maxWidth) {
       const words = text.split('');
-      let lines = [];
+      const lines = [];
       let currentLine = '';
-      for (let i = 0; i < words.length; i++) {
-        const testLine = currentLine + words[i];
-        const testWidth = ctx.measureText(testLine).width;
-        if (testWidth > maxWidth && currentLine !== '') {
+      for (const char of words) {
+        const testLine = currentLine + char;
+        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
           lines.push(currentLine);
-          currentLine = words[i];
+          currentLine = char;
         } else {
           currentLine = testLine;
         }
@@ -465,6 +429,7 @@
       if (currentLine) lines.push(currentLine);
       return lines;
     }
+
     function drawGrid(sx, sy) {
       const cacheKey = `${sx},${sy}`;
       if (!gridCache || gridCache.key !== cacheKey) {
@@ -472,14 +437,14 @@
         offscreenCanvas.width = canvasPx;
         offscreenCanvas.height = canvasPx;
         const offscreenCtx = offscreenCanvas.getContext('2d');
+        offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+        offscreenCtx.lineWidth = 1;
         for (let ty = 0; ty < gridSize; ty++) {
           for (let tx = 0; tx < gridSize; tx++) {
-            let wx = sx + tx, wy = sy + ty;
-            let xPx = tx * cellPx, yPx = ty * cellPx;
-            offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-            offscreenCtx.lineWidth = 1;
+            const wx = sx + tx, wy = sy + ty;
+            const xPx = tx * cellPx, yPx = ty * cellPx;
             offscreenCtx.strokeRect(xPx, yPx, cellPx, cellPx);
-            if (tiles.get(wx + "," + wy) == 1) {
+            if (tiles.get(wx + "," + wy) === 1) {
               offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
               offscreenCtx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
             }
@@ -489,19 +454,21 @@
       }
       ctx.drawImage(gridCache.canvas, 0, 0);
     }
+
     function draw() {
-      ctx.clearRect(0, 0, canvasPx, canvasPx);
       const me = players.get(myId);
       if (!me) return;
-      let sx = me.x - Math.floor(gridSize / 2);
-      let sy = me.y - Math.floor(gridSize / 2);
+      ctx.clearRect(0, 0, canvasPx, canvasPx);
+      const sx = me.x - Math.floor(gridSize / 2);
+      const sy = me.y - Math.floor(gridSize / 2);
       drawGrid(sx, sy);
-      for (let arrow of arrows) {
-        let px1 = (arrow.currentX - sx) * cellPx + cellPx / 2;
-        let py1 = (arrow.currentY - sy) * cellPx + cellPx / 2;
+
+      for (const arrow of arrows) {
+        const px1 = (arrow.currentX - sx) * cellPx + cellPx / 2;
+        const py1 = (arrow.currentY - sy) * cellPx + cellPx / 2;
         let px2 = px1, py2 = py1;
-        if (arrow.path.length > 0) {
-          let nextPos = arrow.path[0];
+        if (arrow.path.length) {
+          const nextPos = arrow.path[0];
           px2 = (nextPos.x - sx) * cellPx + cellPx / 2;
           py2 = (nextPos.y - sy) * cellPx + cellPx / 2;
         }
@@ -514,9 +481,10 @@
           ctx.stroke();
         }
       }
-      for (let [id, player] of players) {
-        let px = (player.x - sx) * cellPx + cellPx / 2;
-        let py = (player.y - sy) * cellPx + cellPx / 2;
+
+      for (const [id, player] of players) {
+        const px = (player.x - sx) * cellPx + cellPx / 2;
+        const py = (player.y - sy) * cellPx + cellPx / 2;
         if (px < 0 || px > canvasPx || py < 0 || py > canvasPx) continue;
         ctx.fillStyle = player.color;
         ctx.font = "26px monospace";
@@ -527,89 +495,73 @@
           ctx.font = "12px monospace";
           ctx.fillStyle = "white";
           ctx.fillText(player.name, px, py - 20);
-          ctx.fillText(`HP: ${player.hp}`, px, py - 35);
+          ctx.fillText(`Здоровье: ${player.hp}`, px, py - 35);
         }
       }
-      for (let [id, player] of players) {
-        let px = (player.x - sx) * cellPx + cellPx / 2;
-        let py = (player.y - sy) * cellPx + cellPx / 2;
-        if (px < 0 || px > canvasPx || py < 0 || py > canvasPx) continue;
-        if (messages.has(id)) {
-          const playerMessages = messages.get(id);
-          const maxWidth = cellPx * 3;
-          let totalHeight = 0;
-          const lineHeight = 15;
-          for (let i = 0; i < playerMessages.length; i++) {
-            const lines = wrapText(playerMessages[i].text, maxWidth);
-            totalHeight += lines.length * lineHeight + 10;
-          }
-          let currentY = py - 50 - totalHeight;
-          for (let i = 0; i < playerMessages.length; i++) {
-            const lines = wrapText(playerMessages[i].text, maxWidth);
-            const boxHeight = lines.length * lineHeight + 10;
-            const boxWidth = maxWidth + 10;
-            ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-            ctx.strokeStyle = "white";
-            ctx.lineWidth = 1;
-            ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
-            ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
-            ctx.font = "12px monospace";
-            ctx.fillStyle = "white";
-            ctx.textBaseline = "middle";
-            for (let j = 0; j < lines.length; j++) {
-              ctx.fillText(lines[j], px, currentY + 5 + (j + 0.5) * lineHeight);
-            }
-            currentY += boxHeight + 5;
-          }
+
+      for (const [id, player] of players) {
+        const px = (player.x - sx) * cellPx + cellPx / 2;
+        const py = (player.y - sy) * cellPx + cellPx / 2;
+        if (px < 0 || px > canvasPx || py < 0 || py > canvasPx || !messages.has(id)) continue;
+        const playerMessages = messages.get(id);
+        const maxWidth = cellPx * 3;
+        let totalHeight = 0;
+        const lineHeight = 15;
+        for (const msg of playerMessages) totalHeight += wrapText(msg.text, maxWidth).length * lineHeight + 10;
+        let currentY = py - 50 - totalHeight;
+        for (const msg of playerMessages) {
+          const lines = wrapText(msg.text, maxWidth);
+          const boxHeight = lines.length * lineHeight + 10;
+          const boxWidth = maxWidth + 10;
+          ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 1;
+          ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+          ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+          ctx.font = "12px monospace";
+          ctx.fillStyle = "white";
+          ctx.textBaseline = "middle";
+          lines.forEach((line, j) => ctx.fillText(line, px, currentY + 5 + (j + 0.5) * lineHeight));
+          currentY += boxHeight + 5;
         }
       }
+
       document.querySelectorAll('.inventory-slot').forEach((slot, index) => {
         const countEl = slot.querySelector('.count');
-        if (countEl) countEl.textContent = inventory[index].count || 0;
+        if (countEl) countEl.innerText = inventory[index].count || 0;
       });
     }
+
     let chatUpdatePending = false;
     function updateGlobalChat() {
       if (chatUpdatePending) return;
       chatUpdatePending = true;
       requestAnimationFrame(() => {
         const chatDiv = document.getElementById('globalChat');
-        chatDiv.innerHTML = '';
-        globalMessages.forEach(msg => {
-          const msgDiv = document.createElement('div');
-          msgDiv.className = 'global-chat-message';
-          msgDiv.textContent = `${msg.name}: ${msg.text}`;
-          chatDiv.appendChild(msgDiv);
-        });
+        chatDiv.innerText = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('\n');
         chatDiv.scrollTop = chatDiv.scrollHeight;
         chatUpdatePending = false;
       });
     }
+
     let playerListUpdatePending = false;
     function updatePlayerList() {
       if (playerListUpdatePending) return;
       playerListUpdatePending = true;
       requestAnimationFrame(() => {
         const playerListDiv = document.getElementById('playerList');
-        playerListDiv.innerHTML = '<strong>Игроки:</strong>';
-        players.forEach((player, id) => {
-          const playerDiv = document.createElement('div');
-          playerDiv.className = 'player-list-item';
-          playerDiv.textContent = player.name || 'Без имени';
-          playerListDiv.appendChild(playerDiv);
-        });
+        playerListDiv.innerText = 'Игроки:\n' + Array.from(players.values()).map(player => player.name || 'Без имени').join('\n');
         playerListUpdatePending = false;
       });
     }
+
     function renderInventory() {
       const inventoryDiv = document.getElementById('inventory');
-      inventoryDiv.innerHTML = '';
       inventory.forEach((item, index) => {
         const slot = document.createElement('div');
         slot.className = 'inventory-slot';
-        slot.setAttribute('data-slot', index);
+        slot.dataset.slot = index;
         slot.innerHTML = `<span>${item.name}</span>` + (item.count !== undefined ? `<span class="count">${item.count}</span>` : '');
-        inventoryDiv.appendChild(slot);
         slot.addEventListener('click', () => {
           if (selectedSlot === index) {
             selectedSlot = null;
@@ -620,83 +572,88 @@
             slot.classList.add('selected');
           }
         });
+        inventoryDiv.appendChild(slot);
       });
     }
+
     function canvasMouseDown(e) {
       const me = players.get(myId);
       if (!me) return;
-      let rect = canvas.getBoundingClientRect();
-      let x = e.clientX - rect.left;
-      let y = e.clientY - rect.top;
-      let tx = Math.floor(x / cellPx);
-      let ty = Math.floor(y / cellPx);
-      let targetX = me.x - Math.floor(gridSize / 2) + tx;
-      let targetY = me.y - Math.floor(gridSize / 2) + ty;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const tx = Math.floor(x / cellPx);
+      const ty = Math.floor(y / cellPx);
+      const targetX = me.x - Math.floor(gridSize / 2) + tx;
+      const targetY = me.y - Math.floor(gridSize / 2) + ty;
       if (selectedSlot === null) {
         path = findPath(me.x, me.y, targetX, targetY);
       } else {
-        const item = inventory[selectedSlot];
-        item.action(me, targetX, targetY, ws, nearby, getCell, inventory, players, myId);
+        inventory[selectedSlot].action(me, targetX, targetY, ws, nearby, getCell, inventory, players, myId);
       }
     }
+
+    const chatInput = document.getElementById('chatInput');
     document.getElementById('sendChat').addEventListener('click', () => {
-      const input = document.getElementById('chatInput');
-      const text = input.value.trim();
+      const text = chatInput.value.trim();
       if (text) {
         ws.send(JSON.stringify({ type: 'chat', text }));
-        input.value = '';
+        chatInput.value = '';
       }
     });
-    document.getElementById('chatInput').addEventListener('keydown', (e) => {
+
+    chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const input = document.getElementById('chatInput');
-        const text = input.value.trim();
+        const text = chatInput.value.trim();
         if (text) {
           ws.send(JSON.stringify({ type: 'chat', text }));
-          input.value = '';
+          chatInput.value = '';
         }
       }
     });
-    document.getElementById('runButton').addEventListener('click', () => {
+
+    const runButton = document.getElementById('runButton');
+    runButton.addEventListener('click', () => {
       isRunning = !isRunning;
-      document.getElementById('runButton').textContent = isRunning ? 'Ходьба' : 'Бег';
+      runButton.innerText = isRunning ? 'Ходьба' : 'Бег';
       moveCooldown = isRunning ? 100 : 250;
     });
+
     document.addEventListener('keydown', (e) => {
       const activeElement = document.activeElement;
-      const isInputFocused = activeElement.tagName === 'INPUT' && (activeElement.id === 'nameInput' || activeElement.id === 'chatInput');
-      if (!isInputFocused) {
-        if (e.key === 'q' || e.key === 'Q') {
-          document.getElementById('chatInput').focus();
-        }
-        if (['1', '2', '3', '4', '5'].includes(e.key)) {
-          e.preventDefault();
-          let index = parseInt(e.key) - 1;
-          if (selectedSlot === index) {
-            selectedSlot = null;
-            document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.remove('selected');
-          } else {
-            selectedSlot = index;
-            document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
-            document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.add('selected');
-          }
+      if (activeElement.tagName === 'INPUT' && (activeElement.id === 'nameInput' || activeElement.id === 'chatInput')) return;
+      if (e.key === 'q' || e.key === 'Q') {
+        chatInput.focus();
+      }
+      if (['1', '2', '3', '4', '5'].includes(e.key)) {
+        e.preventDefault();
+        const index = parseInt(e.key) - 1;
+        if (selectedSlot === index) {
+          selectedSlot = null;
+          document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.remove('selected');
+        } else {
+          selectedSlot = index;
+          document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
+          document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.add('selected');
         }
       }
     });
+
     canvas.onmousedown = canvasMouseDown;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
-      let touch = e.touches[0];
-      let mouseDown = new MouseEvent("mousedown", {
+      const touch = e.touches[0];
+      canvas.dispatchEvent(new MouseEvent("mousedown", {
         clientX: touch.clientX,
         clientY: touch.clientY
-      });
-      canvas.dispatchEvent(mouseDown);
+      }));
     };
+
     function gameLoop(timestamp) {
       if (!lastUpdateTime) lastUpdateTime = timestamp;
       const delta = timestamp - lastUpdateTime;
       lastUpdateTime = timestamp;
+
       moveAlongPath();
       updateArrows();
       regenerateEnergy(delta);
