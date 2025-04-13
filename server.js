@@ -15,6 +15,7 @@ let tiles = [];
 const players = new Map();
 const seed = Math.random() * 1000;
 let updatesBuffer = [];
+const playerPositionsCache = new Map();
 
 function Noise() {
   this.p = new Array(512);
@@ -99,6 +100,7 @@ function respawnPlayer(player) {
       }
     }
   }
+  playerPositionsCache.set(player.id, { x: player.x, y: player.y });
 }
 
 function queueUpdate(message) {
@@ -138,7 +140,7 @@ setInterval(() => {
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
   ws.playerId = id;
-  const player = { x: 0, y: 0, blocks: 0, hp: 100, name: '', color: getUniqueColor() };
+  const player = { x: 0, y: 0, blocks: 0, hp: 100, name: '', color: getUniqueColor(), id };
   respawnPlayer(player);
   players.set(id, player);
 
@@ -160,10 +162,14 @@ wss.on('connection', (ws) => {
       queueUpdate({ type: 'updatePlayer', id, player });
     } else if (data.type === 'move') {
       const { x, y } = data;
+      const prevPos = playerPositionsCache.get(id);
       if (nearby(player.x, player.y, x, y, 1) && getCell(x, y) === 0) {
         player.x = x;
         player.y = y;
-        queueUpdate({ type: 'updatePlayer', id, player });
+        if (prevPos.x !== x || prevPos.y !== y) {
+          playerPositionsCache.set(id, { x, y });
+          queueUpdate({ type: 'updatePlayer', id, player });
+        }
       }
     } else if (data.type === 'break') {
       const { x, y } = data;
@@ -206,6 +212,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     usedColors.delete(player.color);
     players.delete(id);
+    playerPositionsCache.delete(id);
     queueUpdate({ type: 'leave', id });
   });
 });
