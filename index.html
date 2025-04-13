@@ -187,8 +187,7 @@
   </div>
   <script src="/items.js"></script>
   <script>
-    const gridSize = 15, cellPx = 30;
-    let canvasPx = gridSize * cellPx;
+    const gridSize = 15;
     let deviceType = null;
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
@@ -211,6 +210,7 @@
     let moveCooldown = 250;
     let lastMoveTime = 0;
     let lastUpdateTime = 0;
+    let isGameLoopRunning = false; // Флаг для предотвращения множественных вызовов gameLoop
 
     const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
     ws.onopen = () => {};
@@ -290,16 +290,20 @@
     }
 
     function selectDevice(type) {
+      console.log(`Выбрано устройство: ${type}`); // Логирование для отладки
       deviceType = type;
-      canvasPx = type === 'pc' ? 600 : 450;
-      cellPx = canvasPx / gridSize;
+      const canvasPx = type === 'pc' ? 600 : 450;
+      const cellPx = canvasPx / gridSize;
       canvas.width = canvasPx;
       canvas.height = canvasPx;
       document.getElementById('deviceSelect').style.display = 'none';
       document.getElementById('game').style.display = 'block';
       renderInventory();
       needsRedraw = true;
-      gameLoop();
+      if (!isGameLoopRunning) { // Запускаем gameLoop только один раз
+        isGameLoopRunning = true;
+        gameLoop();
+      }
     }
 
     function nearby(x1, y1, x2, y2, range = 1) {
@@ -431,6 +435,8 @@
     }
 
     function drawGrid(sx, sy) {
+      const canvasPx = canvas.width;
+      const cellPx = canvasPx / gridSize;
       const cacheKey = `${sx},${sy}`;
       if (!gridCache || gridCache.key !== cacheKey) {
         const offscreenCanvas = document.createElement('canvas');
@@ -458,6 +464,8 @@
     function draw() {
       const me = players.get(myId);
       if (!me) return;
+      const canvasPx = canvas.width;
+      const cellPx = canvasPx / gridSize;
       ctx.clearRect(0, 0, canvasPx, canvasPx);
       const sx = me.x - Math.floor(gridSize / 2);
       const sy = me.y - Math.floor(gridSize / 2);
@@ -579,6 +587,8 @@
     function canvasMouseDown(e) {
       const me = players.get(myId);
       if (!me) return;
+      const canvasPx = canvas.width;
+      const cellPx = canvasPx / gridSize;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -666,4 +676,4 @@
     }
   </script>
 </body>
-</html>
+  </html>
