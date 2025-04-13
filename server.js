@@ -16,6 +16,7 @@ const players = new Map();
 const seed = Math.random() * 1000;
 let updatesBuffer = [];
 const playerPositionsCache = new Map();
+const updateCache = new Map();
 
 function Noise() {
   this.p = new Array(512);
@@ -104,12 +105,17 @@ function respawnPlayer(player) {
 }
 
 function queueUpdate(message) {
-  updatesBuffer.push(message);
+  const key = JSON.stringify({ type: message.type, id: message.id, x: message.x, y: message.y });
+  if (!updateCache.has(key) || message.type !== 'updatePlayer') {
+    updateCache.set(key, message);
+    updatesBuffer.push(message);
+  }
 }
 
 setInterval(() => {
   if (!updatesBuffer.length) return;
   const updates = updatesBuffer.splice(0, updatesBuffer.length);
+  updateCache.clear();
   const groupedUpdates = new Map();
   updates.forEach(update => groupedUpdates.set(JSON.stringify({ type: update.type, id: update.id, x: update.x, y: update.y }), update));
   const deduplicatedUpdates = Array.from(groupedUpdates.values());
@@ -135,7 +141,7 @@ setInterval(() => {
     });
     if (visibleUpdates.length) client.send(JSON.stringify({ type: 'batch', updates: visibleUpdates }));
   });
-}, 150);
+}, 200);
 
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
