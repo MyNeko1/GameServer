@@ -133,7 +133,7 @@
       padding: 2px;
       border-radius: 3px;
     }
-    .run-button {
+    .run-button, .spawn-button {
       position: absolute;
       bottom: 10px;
       right: 10px;
@@ -145,6 +145,9 @@
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
       z-index: 10;
     }
+    .spawn-button {
+      bottom: 50px;
+    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
@@ -155,11 +158,13 @@
       .global-chat { width: 150px; height: 150px; font-size: 10px; }
       .player-list { width: 150px; font-size: 10px; top: 170px; }
       .run-button { bottom: 60px; right: 10px; }
+      .spawn-button { bottom: 100px; right: 10px; }
     }
     @media (min-width: 601px) {
       .chat { bottom: 100px; }
       .inventory { bottom: 40px; }
       .run-button { bottom: 40px; right: 10px; }
+      .spawn-button { bottom: 80px; right: 10px; }
     }
   </style>
 </head>
@@ -184,20 +189,40 @@
     <div class="player-list" id="playerList"></div>
     <div class="inventory" id="inventory"></div>
     <button class="run-button" id="runButton">Бег</button>
+    <button class="spawn-button" id="spawnButton">Спавн</button>
   </div>
+  <audio id="runSound" src="https://www.myinstants.com/media/sounds/running.mp3"></audio>
   <script src="/items.js"></script>
   <script>
-    const gridSize = 15;
-    let deviceType = null;
+    // Константы
+    const GRID_SIZE = 15;
+    const MAX_ARROWS = 50;
+    const MAX_ENERGY = 100;
+    const MESSAGE_LIFETIME = 30000;
+    const CHAT_MESSAGE_LIFETIME = 10000;
+
+    // DOM-элементы (кэшируем)
     const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     ctx.imageSmoothingEnabled = true;
+    const statsEl = document.getElementById("stats");
+    const chatInput = document.getElementById("chatInput");
+    const globalChatEl = document.getElementById("globalChat");
+    const playerListEl = document.getElementById("playerList");
+    const inventoryEl = document.getElementById("inventory");
+    const runButton = document.getElementById("runButton");
+    const spawnButton = document.getElementById("spawnButton");
+    const runSound = document.getElementById("runSound");
+
+    // Глобальные переменные
+    let deviceType = null;
+    let canvasPx = 0;
+    let cellPx = 0;
     const tiles = new Map();
     const players = new Map();
     const messages = new Map();
     let globalMessages = [];
     const arrows = [];
-    const maxArrows = 50;
     let myId = null;
     let selectedSlot = null;
     let inventory = getItems();
@@ -205,12 +230,14 @@
     let needsRedraw = false;
     let gridCache = null;
     let energy = 100;
-    const maxEnergy = 100;
     let isRunning = false;
     let moveCooldown = 250;
     let lastMoveTime = 0;
     let lastUpdateTime = 0;
-    let isGameLoopRunning = false; // Флаг для предотвращения множественных вызовов gameLoop
+    let isGameLoopRunning = false;
+    let spawnPosition = { x: 0, y: 0 };
+    let playerPositionsCache = new Map();
+    let statsCache = '';
 
     const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
     ws.onopen = () => {};
@@ -218,26 +245,39 @@
       const data = JSON.parse(message.data);
       if (data.type === 'init') {
         myId = data.id;
-        Object.entries(data.players).forEach(([id, player]) => players.set(id, player));
+        Object.entries(data.players).forEach(([id, player]) => {
+          players.set(id, player);
+          playerPositionsCache.set(id, { x: player.x, y: player.y });
+        });
         Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
         inventory[0].count = players.get(myId).blocks || 0;
+        const me = players.get(myId);
+        spawnPosition = { x: me.x, y: me.y };
         updatePlayerList();
         needsRedraw = true;
       } else if (data.type === 'batch') {
+        let playersChanged = false;
+        let tilesChanged = false;
         data.updates.forEach((update) => {
           if (update.type === 'join') {
             players.set(update.id, update.player);
-            updatePlayerList();
+            playerPositionsCache.set(update.id, { x: update.player.x, y: update.player.y });
+            playersChanged = true;
           } else if (update.type === 'updatePlayer') {
+            const prevPos = playerPositionsCache.get(update.id);
             players.set(update.id, update.player);
+            playerPositionsCache.set(update.id, { x: update.player.x, y: update.player.y });
             if (update.id === myId) inventory[0].count = update.player.blocks || 0;
+            if (prevPos.x !== update.player.x || prevPos.y !== update.player.y) playersChanged = true;
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
             gridCache = null;
+            tilesChanged = true;
           } else if (update.type === 'leave') {
             players.delete(update.id);
             messages.delete(update.id);
-            updatePlayerList();
+            playerPositionsCache.delete(update.id);
+            playersChanged = true;
           } else if (update.type === 'chat') {
             const { id, text, timestamp } = update;
             const player = players.get(id);
@@ -247,7 +287,7 @@
               setTimeout(() => {
                 globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
                 updateGlobalChat();
-              }, 30000);
+              }, MESSAGE_LIFETIME);
             }
             if (!messages.has(id)) messages.set(id, []);
             messages.get(id).push({ text, timestamp });
@@ -258,9 +298,9 @@
                 if (index !== -1) playerMessages.splice(index, 1);
                 if (playerMessages.length === 0) messages.delete(id);
               }
-            }, 10000);
+            }, CHAT_MESSAGE_LIFETIME);
           } else if (update.type === 'arrow') {
-            if (arrows.length < maxArrows) {
+            if (arrows.length < MAX_ARROWS) {
               arrows.push({
                 x: update.x,
                 y: update.y,
@@ -275,7 +315,7 @@
             }
           }
         });
-        needsRedraw = true;
+        if (playersChanged || tilesChanged) needsRedraw = true;
       }
     };
     ws.onclose = () => {};
@@ -290,24 +330,23 @@
     }
 
     function selectDevice(type) {
-      console.log(`Выбрано устройство: ${type}`); // Логирование для отладки
       deviceType = type;
-      const canvasPx = type === 'pc' ? 600 : 450;
-      const cellPx = canvasPx / gridSize;
+      canvasPx = type === 'pc' ? 600 : 450;
+      cellPx = canvasPx / GRID_SIZE;
       canvas.width = canvasPx;
       canvas.height = canvasPx;
       document.getElementById('deviceSelect').style.display = 'none';
       document.getElementById('game').style.display = 'block';
       renderInventory();
       needsRedraw = true;
-      if (!isGameLoopRunning) { // Запускаем gameLoop только один раз
+      if (!isGameLoopRunning) {
         isGameLoopRunning = true;
         gameLoop();
       }
     }
 
     function nearby(x1, y1, x2, y2, range = 1) {
-      return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 != x2 || y1 != y2);
+      return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 !== x2 || y1 !== y2);
     }
 
     function getCell(x, y) {
@@ -351,14 +390,16 @@
         if (isRunning && energy >= 4) {
           energy -= 4;
           moveCooldown = 100;
+          runSound.currentTime = 0;
+          runSound.play().catch(() => {});
         } else {
           moveCooldown = 250;
         }
         ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
+        needsRedraw = true;
       } else {
         path = [];
       }
-      needsRedraw = true;
     }
 
     function calculatePath(startX, startY, targetX, targetY) {
@@ -380,11 +421,13 @@
       const me = players.get(myId);
       if (!me) return;
       const now = Date.now();
+      let arrowsChanged = false;
       for (let i = arrows.length - 1; i >= 0; i--) {
         const arrow = arrows[i];
         const elapsed = (now - arrow.startTime) / 1000;
         if (elapsed > 10 || !arrow.path.length) {
           arrows.splice(i, 1);
+          arrowsChanged = true;
           continue;
         }
         const nextPos = arrow.path.shift();
@@ -392,6 +435,7 @@
         arrow.currentY = nextPos.y;
         if (tiles.get(arrow.currentX + "," + arrow.currentY) === 1) {
           arrows.splice(i, 1);
+          arrowsChanged = true;
           continue;
         }
         for (const [id, player] of players) {
@@ -399,22 +443,31 @@
           if (Math.abs(player.x - arrow.currentX) <= 0.5 && Math.abs(player.y - arrow.currentY) <= 0.5) {
             ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
             arrows.splice(i, 1);
+            arrowsChanged = true;
             break;
           }
         }
       }
-      needsRedraw = true;
+      if (arrowsChanged) needsRedraw = true;
     }
 
     function regenerateEnergy(delta) {
       if (!players.get(myId)) return;
-      energy = Math.min(maxEnergy, energy + (path.length ? 4 : 8) / 1000 * delta);
+      const newEnergy = Math.min(MAX_ENERGY, energy + (path.length ? 4 : 8) / 1000 * delta);
+      if (newEnergy !== energy) {
+        energy = newEnergy;
+        needsRedraw = true;
+      }
     }
 
     function updateStats() {
       const me = players.get(myId);
       if (!me) return;
-      document.getElementById("stats").innerText = `Здоровье: ${me.hp} | Энергия: ${Math.floor(energy)} | Скорость: ${isRunning ? 'Бег' : 'Обычная'}`;
+      const newStats = `Здоровье: ${me.hp} | Энергия: ${Math.floor(energy)} | Скорость: ${isRunning ? 'Бег' : 'Обычная'}`;
+      if (newStats !== statsCache) {
+        statsCache = newStats;
+        statsEl.innerText = statsCache;
+      }
     }
 
     function wrapText(text, maxWidth) {
@@ -435,8 +488,6 @@
     }
 
     function drawGrid(sx, sy) {
-      const canvasPx = canvas.width;
-      const cellPx = canvasPx / gridSize;
       const cacheKey = `${sx},${sy}`;
       if (!gridCache || gridCache.key !== cacheKey) {
         const offscreenCanvas = document.createElement('canvas');
@@ -445,8 +496,8 @@
         const offscreenCtx = offscreenCanvas.getContext('2d');
         offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
         offscreenCtx.lineWidth = 1;
-        for (let ty = 0; ty < gridSize; ty++) {
-          for (let tx = 0; tx < gridSize; tx++) {
+        for (let ty = 0; ty < GRID_SIZE; ty++) {
+          for (let tx = 0; tx < GRID_SIZE; tx++) {
             const wx = sx + tx, wy = sy + ty;
             const xPx = tx * cellPx, yPx = ty * cellPx;
             offscreenCtx.strokeRect(xPx, yPx, cellPx, cellPx);
@@ -464,11 +515,9 @@
     function draw() {
       const me = players.get(myId);
       if (!me) return;
-      const canvasPx = canvas.width;
-      const cellPx = canvasPx / gridSize;
       ctx.clearRect(0, 0, canvasPx, canvasPx);
-      const sx = me.x - Math.floor(gridSize / 2);
-      const sy = me.y - Math.floor(gridSize / 2);
+      const sx = me.x - Math.floor(GRID_SIZE / 2);
+      const sy = me.y - Math.floor(GRID_SIZE / 2);
       drawGrid(sx, sy);
 
       for (const arrow of arrows) {
@@ -494,14 +543,21 @@
         const px = (player.x - sx) * cellPx + cellPx / 2;
         const py = (player.y - sy) * cellPx + cellPx / 2;
         if (px < 0 || px > canvasPx || py < 0 || py > canvasPx) continue;
+        ctx.save();
+        ctx.translate(px, py);
+        if (id === myId && isRunning) {
+          ctx.scale(1.2, 1.2);
+        }
         ctx.fillStyle = player.color;
         ctx.font = "26px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("@", px, py);
+        ctx.fillText("@", 0, 0);
+        ctx.restore();
         if (player.name) {
           ctx.font = "12px monospace";
           ctx.fillStyle = "white";
+          ctx.textAlign = "center";
           ctx.fillText(player.name, px, py - 20);
           ctx.fillText(`Здоровье: ${player.hp}`, px, py - 35);
         }
@@ -534,10 +590,11 @@
         }
       }
 
-      document.querySelectorAll('.inventory-slot').forEach((slot, index) => {
-        const countEl = slot.querySelector('.count');
-        if (countEl) countEl.innerText = inventory[index].count || 0;
-      });
+      const slots = inventoryEl.querySelectorAll('.inventory-slot');
+      for (let i = 0; i < slots.length; i++) {
+        const countEl = slots[i].querySelector('.count');
+        if (countEl) countEl.innerText = inventory[i].count || 0;
+      }
     }
 
     let chatUpdatePending = false;
@@ -545,9 +602,8 @@
       if (chatUpdatePending) return;
       chatUpdatePending = true;
       requestAnimationFrame(() => {
-        const chatDiv = document.getElementById('globalChat');
-        chatDiv.innerText = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('\n');
-        chatDiv.scrollTop = chatDiv.scrollHeight;
+        globalChatEl.innerText = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('\n');
+        globalChatEl.scrollTop = globalChatEl.scrollHeight;
         chatUpdatePending = false;
       });
     }
@@ -557,14 +613,15 @@
       if (playerListUpdatePending) return;
       playerListUpdatePending = true;
       requestAnimationFrame(() => {
-        const playerListDiv = document.getElementById('playerList');
-        playerListDiv.innerText = 'Игроки:\n' + Array.from(players.values()).map(player => player.name || 'Без имени').join('\n');
+        const playerNames = Array.from(players.values())
+          .filter(player => player.name && player.name.trim() !== '')
+          .map(player => player.name);
+        playerListEl.innerText = playerNames.length ? `Игроки:\n${playerNames.join('\n')}` : 'Игроки:\n(нет игроков)';
         playerListUpdatePending = false;
       });
     }
 
     function renderInventory() {
-      const inventoryDiv = document.getElementById('inventory');
       inventory.forEach((item, index) => {
         const slot = document.createElement('div');
         slot.className = 'inventory-slot';
@@ -576,26 +633,24 @@
             slot.classList.remove('selected');
           } else {
             selectedSlot = index;
-            document.querySelectorAll('.inventory-slot').forEach(s => s.classList.remove('selected'));
+            inventoryEl.querySelectorAll('.inventory-slot').forEach(s => s.classList.remove('selected'));
             slot.classList.add('selected');
           }
         });
-        inventoryDiv.appendChild(slot);
+        inventoryEl.appendChild(slot);
       });
     }
 
     function canvasMouseDown(e) {
       const me = players.get(myId);
       if (!me) return;
-      const canvasPx = canvas.width;
-      const cellPx = canvasPx / gridSize;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const tx = Math.floor(x / cellPx);
       const ty = Math.floor(y / cellPx);
-      const targetX = me.x - Math.floor(gridSize / 2) + tx;
-      const targetY = me.y - Math.floor(gridSize / 2) + ty;
+      const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
+      const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
       if (selectedSlot === null) {
         path = findPath(me.x, me.y, targetX, targetY);
       } else {
@@ -603,7 +658,6 @@
       }
     }
 
-    const chatInput = document.getElementById('chatInput');
     document.getElementById('sendChat').addEventListener('click', () => {
       const text = chatInput.value.trim();
       if (text) {
@@ -622,11 +676,19 @@
       }
     });
 
-    const runButton = document.getElementById('runButton');
     runButton.addEventListener('click', () => {
       isRunning = !isRunning;
       runButton.innerText = isRunning ? 'Ходьба' : 'Бег';
       moveCooldown = isRunning ? 100 : 250;
+      needsRedraw = true;
+    });
+
+    spawnButton.addEventListener('click', () => {
+      const me = players.get(myId);
+      if (!me) return;
+      ws.send(JSON.stringify({ type: 'move', x: spawnPosition.x, y: spawnPosition.y }));
+      path = [];
+      needsRedraw = true;
     });
 
     document.addEventListener('keydown', (e) => {
@@ -640,11 +702,11 @@
         const index = parseInt(e.key) - 1;
         if (selectedSlot === index) {
           selectedSlot = null;
-          document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.remove('selected');
+          inventoryEl.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.remove('selected');
         } else {
           selectedSlot = index;
-          document.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
-          document.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.add('selected');
+          inventoryEl.querySelectorAll('.inventory-slot').forEach(slot => slot.classList.remove('selected'));
+          inventoryEl.querySelector(`.inventory-slot[data-slot="${index}"]`).classList.add('selected');
         }
       }
     });
@@ -676,4 +738,4 @@
     }
   </script>
 </body>
-  </html>
+</html>
