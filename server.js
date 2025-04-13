@@ -2,12 +2,14 @@ const express = require('express');
 const WebSocket = require('ws');
 const { logPlayer } = require('./playersLog');
 const { logMessage } = require('./chatLog');
+const path = require('path');
 const app = express();
 const server = app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
 const wss = new WebSocket.Server({ 
   server,
+  path: '/ws',
   perMessageDeflate: {
     zlibDeflateOptions: {
       chunkSize: 1024,
@@ -139,11 +141,8 @@ setInterval(() => {
       if (update.type === 'updateTile') {
         return isInRange(player.x, player.y, update.x, update.y, 15);
       }
-      if (update.type === 'chat') {
+      if (update.type === 'chat' || update.type === 'arrow') {
         return true;
-      }
-      if (update.type === 'arrow') {
-        return isInRange(player.x, player.y, update.x, update.y, 15) || isInRange(player.x, player.y, update.targetX, update.targetY, 15);
       }
       return true;
     });
@@ -151,7 +150,7 @@ setInterval(() => {
       client.send(JSON.stringify({ type: 'batch', updates: visibleUpdates }));
     }
   });
-}, 100);
+}, 150);
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
   ws.playerId = id;
@@ -225,9 +224,7 @@ wss.on('connection', (ws) => {
     queueUpdate({ type: 'leave', id });
   });
 });
+app.use('/client', express.static(path.join(__dirname, '../client')));
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
-});
-app.get('/items.js', (req, res) => {
-  res.sendFile(__dirname + '/items.js');
+  res.sendFile(path.join(__dirname, '../client/index.html'));
 });
