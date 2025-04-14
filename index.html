@@ -89,6 +89,17 @@
     #game {
       display: none;
     }
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 14px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 5px;
+      border: 1px solid white;
+      border-radius: 5px;
+    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
@@ -113,6 +124,7 @@
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="global-chat" id="globalChat"></div>
+    <div id="status">Подключение...</div>
   </div>
   <script>
     const GRID_SIZE = 15;
@@ -130,6 +142,7 @@
     const chatInput = document.getElementById("chatInput");
     const globalChatEl = document.getElementById("globalChat");
     const invEl = document.getElementById("invCount");
+    const statusEl = document.getElementById("status");
 
     let myId = "solo";
     let players = new Map();
@@ -142,12 +155,13 @@
     let isHoldingStick = false;
     let lastMoveTime = 0;
     let playerName = "";
-    let isMultiplayer = true;
+    let isMultiplayer = false;
     const seed = Math.random() * 1000;
 
     const ws = new WebSocket('wss://' + window.location.host + '/ws');
     ws.onopen = () => {
       isMultiplayer = true;
+      statusEl.textContent = "Мультиплеер: Подключено";
     };
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
@@ -207,9 +221,11 @@
     };
     ws.onclose = () => {
       isMultiplayer = false;
+      statusEl.textContent = "Мультиплеер: Отключено (Одиночный режим)";
     };
     ws.onerror = () => {
       isMultiplayer = false;
+      statusEl.textContent = "Мультиплеер: Ошибка (Одиночный режим)";
     };
 
     function Noise() {
