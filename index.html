@@ -147,6 +147,7 @@
     let playerName = "";
     let lastSx = null;
     let lastSy = null;
+    let lastRequestedPos = null; // Для проверки ожидаемой позиции
     const seed = Math.random() * 1000;
 
     let ws = new WebSocket('wss://' + window.location.host + '/ws');
@@ -179,8 +180,16 @@
             const prevPlayer = players.get(update.id);
             if (prevPlayer) {
               players.set(update.id, update.player);
-              if (update.id === myId && (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y)) {
-                path = [];
+              if (update.id === myId) {
+                // Проверяем, совпадает ли новая позиция с ожидаемой
+                if (lastRequestedPos && update.player.x === lastRequestedPos.x && update.player.y === lastRequestedPos.y) {
+                  console.log("Position confirmed, continuing path:", path);
+                  lastRequestedPos = null; // Сбрасываем после подтверждения
+                } else if (lastRequestedPos) {
+                  console.log("Position mismatch, clearing path. Expected:", lastRequestedPos, "Got:", { x: update.player.x, y: update.player.y });
+                  path = []; // Сбрасываем путь, если сервер вернул неожиданную позицию
+                  lastRequestedPos = null;
+                }
               }
               if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
                 playersChanged = true;
@@ -318,10 +327,13 @@
       if (getCell(nextPos.x, nextPos.y) === 0) {
         const me = players.get(myId);
         if (me) {
+          lastRequestedPos = { x: nextPos.x, y: nextPos.y }; // Сохраняем ожидаемую позицию
+          console.log("Moving to:", lastRequestedPos, "Remaining path:", path);
           ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
           needsRedraw = true;
         }
       } else {
+        console.log("Obstacle at:", nextPos, "Clearing path");
         path = [];
       }
     }
@@ -522,6 +534,7 @@
       const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
       const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
       path = findPath(me.x, me.y, targetX, targetY);
+      console.log("Path to target:", path);
     }
 
     function gameLoop() {
