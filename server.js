@@ -73,18 +73,6 @@ function generateInitialTiles() {
 
 generateInitialTiles();
 
-const usedColors = new Set();
-function getUniqueColor() {
-  const colors = ['#FF5555', '#55FF55', '#5555FF', '#FFFF55', '#FF55FF', '#55FFFF', '#FFAA55', '#55FFAA'];
-  for (const color of colors) {
-    if (!usedColors.has(color)) {
-      usedColors.add(color);
-      return color;
-    }
-  }
-  return '#' + Math.floor(Math.random() * 16777215).toString(16);
-}
-
 function respawnPlayer(player) {
   player.x = 0;
   player.y = 0;
@@ -110,6 +98,21 @@ function queueUpdate(message) {
   if (!updateCache.has(key) || message.type !== 'updatePlayer') {
     updateCache.set(key, message);
     updatesBuffer.push(message);
+  }
+}
+
+function clearPlayerUpdates(id) {
+  updatesBuffer = updatesBuffer.filter(update => update.id !== id);
+  updateCache.forEach((value, key) => {
+    if (JSON.parse(key).id === id) {
+      updateCache.delete(key);
+    }
+  });
+}
+
+function sendImmediateUpdate(client, update) {
+  if (client.readyState === WebSocket.OPEN) {
+    client.send(JSON.stringify({ type: 'batch', updates: [update] }));
   }
 }
 
@@ -140,6 +143,7 @@ setInterval(() => {
     const visibleUpdates = finalUpdates.filter(update => {
       if (update.type === 'updatePlayer' || update.type === 'join') {
         const otherPlayer = update.type === 'join' ? update.player : players.get(update.id);
+        if (!otherPlayer) return false;
         return isInRange(player.x, player.y, otherPlayer.x, otherPlayer.y, 15);
       }
       if (update.type === 'updateTile') return isInRange(player.x, player.y, update.x, update.y, 15);
@@ -147,12 +151,12 @@ setInterval(() => {
     });
     if (visibleUpdates.length) client.send(JSON.stringify({ type: 'batch', updates: visibleUpdates }));
   });
-}, 200);
+}, 100);
 
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
   ws.playerId = id;
-  const player = { x: 0, y: 0, hp: 100, name: '', color: getUniqueColor(), id, isHoldingStick: false };
+  const player = { x: 0, y: 0, hp: 100, name: '', color: 'white', id, isHoldingStick: false };
   respawnPlayer(player);
   players.set(id, player);
 
@@ -168,6 +172,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     const data = JSON.parse(message);
     const player = players.get(id);
+    if (!player) return;
     if (data.type === 'setName') {
       player.name = data.name;
       queueUpdate({ type: 'updatePlayer', id, player });
@@ -177,6 +182,7 @@ wss.on('connection', (ws) => {
         player.x = x;
         player.y = y;
         queueUpdate({ type: 'updatePlayer', id, player });
+        sendImmediateUpdate(ws, { type: 'updatePlayer', id, player });
       }
     } else if (data.type === 'chat') {
       const timestamp = Date.now();
@@ -188,8 +194,10 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    usedColors.delete(player.color);
+    const player = players.get(id);
+    if (!player) return;
     players.delete(id);
+    clearPlayerUpdates(id);
     queueUpdate({ type: 'leave', id });
   });
 });
