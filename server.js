@@ -45,6 +45,7 @@ function getCell(x, y) {
     const scale = 0.2;
     const val = perlin.noise(x * scale + seed, y * scale + seed, 0);
     tiles[x][y] = (val + 1) / 2 < 0.6 ? 0 : 1;
+    console.log("Server generated cell:", x, y, tiles[x][y]);
   }
   return tiles[x][y];
 }
@@ -63,7 +64,12 @@ function isInRange(x1, y1, x2, y2, range) {
 }
 
 function generateInitialTiles() {
-  for (let x = -50; x <= 50; x++) for (let y = -50; y <= 50; y++) getCell(x, y);
+  for (let x = -50; x <= 50; x++) {
+    for (let y = -50; y <= 50; y++) {
+      getCell(x, y);
+    }
+  }
+  console.log("Initial tiles generated");
 }
 
 generateInitialTiles();
@@ -98,6 +104,7 @@ function respawnPlayer(player) {
       }
     }
   }
+  console.log("Player respawned at:", player.x, player.y);
 }
 
 function queueUpdate(message) {
@@ -113,7 +120,7 @@ setInterval(() => {
   const updates = updatesBuffer.splice(0, updatesBuffer.length);
   updateCache.clear();
   const groupedUpdates = new Map();
-  updates.forEach(update => groupedUpdates.set(JSON.stringify({ type: update.type, id: update.id, x: update.x, y: update.y }), update));
+  updates.forEach(update => groupedUpdates.set(JSON.stringify({ type: update.type, id: update.id, x: update.x, y: message.x }), update));
   const deduplicatedUpdates = Array.from(groupedUpdates.values());
   const playerUpdates = new Map();
   deduplicatedUpdates.forEach(update => {
