@@ -49,7 +49,7 @@
       color: white;
       border: 1px solid white;
       padding: 5px;
-      font-size: 14px;
+       font-size: 14px;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
       width: 200px;
     }
@@ -144,6 +144,7 @@
     let playerName = "";
     let lastSx = null;
     let lastSy = null;
+    let isMoving = false;
     const seed = Math.random() * 1000;
 
     let ws = new WebSocket('wss://' + window.location.host + '/ws');
@@ -175,9 +176,17 @@
             playersChanged = true;
           } else if (update.type === 'updatePlayer') {
             const prevPlayer = players.get(update.id);
-            players.set(update.id, update.player);
-            if (prevPlayer && (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y)) {
-              playersChanged = true;
+            if (prevPlayer) {
+              players.set(update.id, update.player);
+              if (update.id === myId) {
+                isMoving = false;
+                if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
+                  path = [];
+                }
+              }
+              if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
+                playersChanged = true;
+              }
             }
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
@@ -185,9 +194,12 @@
           } else if (update.type === 'leave') {
             players.delete(update.id);
             messages.delete(update.id);
+            globalMessages = globalMessages.filter(m => m.id !== update.id);
+            updateGlobalChat();
             playersChanged = true;
           } else if (update.type === 'chat') {
             const { id, text, timestamp } = update;
+            if (!players.has(id)) return;
             const player = players.get(id);
             if (player) {
               globalMessages.push({ id, name: player.name, text, timestamp });
@@ -285,7 +297,7 @@
     }
 
     function moveAlongPath() {
-      if (!path.length) return;
+      if (!path.length || isMoving) return;
       const now = Date.now();
       if (now - lastMoveTime < MOVE_COOLDOWN) return;
       lastMoveTime = now;
@@ -293,8 +305,7 @@
       if (getCell(nextPos.x, nextPos.y) === 0) {
         const me = players.get(myId);
         if (me) {
-          me.x = nextPos.x;
-          me.y = nextPos.y;
+          isMoving = true;
           ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
           needsRedraw = true;
         }
@@ -360,7 +371,7 @@
         const px = (player.x - sx) * CELL_PX + CELL_PX / 2;
         const py = (player.y - sy) * CELL_PX + CELL_PX / 2;
         if (px < 0 || px > CANVAS_PX || py < 0 || py > CANVAS_PX) continue;
-        ctx.fillStyle = player.color;
+        ctx.fillStyle = "white";
         ctx.font = "26px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
