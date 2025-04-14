@@ -120,6 +120,7 @@
     const CANVAS_PX = GRID_SIZE * CELL_PX;
     const MESSAGE_LIFETIME = 10000;
     const MOVE_COOLDOWN = 250;
+    const CHAT_MESSAGE_LIFETIME = 10000;
 
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -130,9 +131,11 @@
     const globalChatEl = document.getElementById("globalChat");
     const invEl = document.getElementById("invCount");
 
-    let px = 0, py = 0;
+    let myId = null;
+    let players = new Map();
     let tiles = new Map();
     let globalMessages = [];
+    let messages = new Map();
     let path = [];
     let needsRedraw = false;
     let gridCache = null;
@@ -140,6 +143,64 @@
     let lastMoveTime = 0;
     let playerName = "";
     const seed = Math.random() * 1000;
+
+    const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
+    ws.onopen = () => {};
+    ws.onmessage = (message) => {
+      const data = JSON.parse(message.data);
+      if (data.type === 'init') {
+        myId = data.id;
+        Object.entries(data.players).forEach(([id, player]) => {
+          players.set(id, player);
+        });
+        Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
+        needsRedraw = true;
+      } else if (data.type === 'batch') {
+        let playersChanged = false;
+        data.updates.forEach((update) => {
+          if (update.type === 'join') {
+            players.set(update.id, update.player);
+            playersChanged = true;
+          } else if (update.type === 'updatePlayer') {
+            const prevPlayer = players.get(update.id);
+            players.set(update.id, update.player);
+            if (prevPlayer && (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y)) {
+              playersChanged = true;
+            }
+          } else if (update.type === 'updateTile') {
+            tiles.set(update.x + "," + update.y, update.value);
+            gridCache = null;
+          } else if (update.type === 'leave') {
+            players.delete(update.id);
+            messages.delete(update.id);
+            playersChanged = true;
+          } else if (update.type === 'chat') {
+            const { id, text, timestamp } = update;
+            const player = players.get(id);
+            if (player) {
+              globalMessages.push({ id, name: player.name, text, timestamp });
+              updateGlobalChat();
+              setTimeout(() => {
+                globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+                updateGlobalChat();
+              }, MESSAGE_LIFETIME);
+            }
+            if (!messages.has(id)) messages.set(id, []);
+            messages.get(id).push({ text, timestamp });
+            setTimeout(() => {
+              const playerMessages = messages.get(id);
+              if (playerMessages) {
+                const index = playerMessages.findIndex(m => m.timestamp === timestamp);
+                if (index !== -1) playerMessages.splice(index, 1);
+                if (playerMessages.length === 0) messages.delete(id);
+              }
+            }, CHAT_MESSAGE_LIFETIME);
+          }
+        });
+        if (playersChanged) needsRedraw = true;
+      }
+    };
+    ws.onclose = () => {};
 
     function Noise() {
       this.p = new Array(512);
@@ -209,13 +270,28 @@
       lastMoveTime = now;
       const nextPos = path.shift();
       if (getCell(nextPos.x, nextPos.y) === 0) {
-        px = nextPos.x;
-        py = nextPos.y;
-        gridCache = null;
+        ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
         needsRedraw = true;
       } else {
         path = [];
       }
+    }
+
+    function wrapText(text, maxWidth) {
+      const words = text.split('');
+      const lines = [];
+      let currentLine = '';
+      for (const char of words) {
+        const testLine = currentLine + char;
+        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = char;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+      return lines;
     }
 
     function drawGrid(sx, sy) {
@@ -244,20 +320,62 @@
     }
 
     function draw() {
+      const me = players.get(myId);
+      if (!me) return;
       ctx.clearRect(0, 0, CANVAS_PX, CANVAS_PX);
-      const sx = px - Math.floor(GRID_SIZE / 2);
-      const sy = py - Math.floor(GRID_SIZE / 2);
+      const sx = me.x - Math.floor(GRID_SIZE / 2);
+      const sy = me.y - Math.floor(GRID_SIZE / 2);
       drawGrid(sx, sy);
-      ctx.fillStyle = "white";
-      ctx.font = "26px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const playerX = Math.floor(GRID_SIZE / 2) * CELL_PX + CELL_PX / 2;
-      const playerY = Math.floor(GRID_SIZE / 2) * CELL_PX + CELL_PX / 2;
-      ctx.fillText("@", playerX, playerY);
-      if (isHoldingStick) {
-        ctx.fillStyle = "brown";
-        ctx.fillRect(playerX + 10, playerY - 5, 15, 5);
+
+      for (const [id, player] of players) {
+        const px = (player.x - sx) * CELL_PX + CELL_PX / 2;
+        const py = (player.y - sy) * CELL_PX + CELL_PX / 2;
+        if (px < 0 || px > CANVAS_PX || py < 0 || py > CANVAS_PX) continue;
+        ctx.fillStyle = player.color;
+        ctx.font = "26px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("@", px, py);
+        if (player.name) {
+          ctx.font = "12px monospace";
+          ctx.fillStyle = "white";
+          ctx.fillText(player.name, px, py - 20);
+        }
+        if (player.isHoldingStick) {
+          ctx.fillStyle = "brown";
+          ctx.fillRect(px + 10, py - 5, 15, 5);
+        }
+      }
+
+      for (const [id, player] of players) {
+        const px = (player.x - sx) * CELL_PX + CELL_PX / 2;
+        const py = (player.y - sy) * CELL_PX + CELL_PX / 2;
+        if (px < 0 || px > CANVAS_PX || py < 0 || py > CANVAS_PX || !messages.has(id)) continue;
+        const playerMessages = messages.get(id);
+        const maxWidth = CELL_PX * 3;
+        let totalHeight = 0;
+        const lineHeight = 15;
+        for (const msg of playerMessages) {
+          totalHeight += wrapText(msg.text, maxWidth).length * lineHeight + 10;
+        }
+        let currentY = py - 50 - totalHeight;
+        for (const msg of playerMessages) {
+          const lines = wrapText(msg.text, maxWidth);
+          const boxHeight = lines.length * lineHeight + 10;
+          const boxWidth = maxWidth + 10;
+          ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 1;
+          ctx.fillRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+          ctx.strokeRect(px - boxWidth / 2, currentY, boxWidth, boxHeight);
+          ctx.font = "12px monospace";
+          ctx.fillStyle = "white";
+          ctx.textBaseline = "middle";
+          lines.forEach((line, j) => {
+            ctx.fillText(line, px, currentY + 5 + (j + 0.5) * lineHeight);
+          });
+          currentY += boxHeight + 5;
+        }
       }
     }
 
@@ -266,7 +384,7 @@
       if (chatUpdatePending) return;
       chatUpdatePending = true;
       requestAnimationFrame(() => {
-        globalChatEl.innerHTML = globalMessages.map(msg => `${msg.text}`).join('<br>');
+        globalChatEl.innerHTML = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('<br>');
         globalChatEl.scrollTop = globalChatEl.scrollHeight;
         chatUpdatePending = false;
       });
@@ -275,35 +393,31 @@
     function startGame() {
       playerName = document.getElementById('nameInput').value.trim();
       if (playerName) {
+        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
         document.getElementById('login').style.display = 'none';
         document.getElementById('game').style.display = 'block';
         needsRedraw = true;
-        gameLoop();
       }
     }
 
     function canvasClick(e) {
+      const me = players.get(myId);
+      if (!me) return;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
       const tx = Math.floor(x / CELL_PX);
       const ty = Math.floor(y / CELL_PX);
-      const targetX = px - Math.floor(GRID_SIZE / 2) + tx;
-      const targetY = py - Math.floor(GRID_SIZE / 2) + ty;
-      path = findPath(px, py, targetX, targetY);
+      const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
+      const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
+      path = findPath(me.x, me.y, targetX, targetY);
     }
 
     document.getElementById('sendChat').addEventListener('click', () => {
       const text = chatInput.value.trim();
       if (text) {
-        const timestamp = Date.now();
-        globalMessages.push({ text: `${playerName}: ${text}`, timestamp });
-        updateGlobalChat();
+        ws.send(JSON.stringify({ type: 'chat', text }));
         chatInput.value = '';
-        setTimeout(() => {
-          globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
-          updateGlobalChat();
-        }, MESSAGE_LIFETIME);
       }
     });
 
@@ -311,14 +425,8 @@
       if (e.key === 'Enter') {
         const text = chatInput.value.trim();
         if (text) {
-          const timestamp = Date.now();
-          globalMessages.push({ text: `${playerName}: ${text}`, timestamp });
-          updateGlobalChat();
+          ws.send(JSON.stringify({ type: 'chat', text }));
           chatInput.value = '';
-          setTimeout(() => {
-            globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
-            updateGlobalChat();
-          }, MESSAGE_LIFETIME);
         }
       }
     });
@@ -334,6 +442,7 @@
     invEl.addEventListener('click', () => {
       isHoldingStick = !isHoldingStick;
       invEl.classList.toggle('selected', isHoldingStick);
+      ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick }));
       needsRedraw = true;
     });
 
@@ -355,22 +464,6 @@
         needsRedraw = false;
       }
       requestAnimationFrame(gameLoop);
-    }
-
-    if (getCell(px, py) === 1) {
-      let found = false;
-      for (let r = 1; r < 100 && !found; r++) {
-        for (let dy = -r; dy <= r && !found; dy++) {
-          for (let dx = -r; dx <= r; dx++) {
-            if ((Math.abs(dx) === r || Math.abs(dy) === r) && getCell(px + dx, py + dy) === 0) {
-              px += dx;
-              py += dy;
-              found = true;
-              break;
-            }
-          }
-        }
-      }
     }
   </script>
 </body>
