@@ -131,7 +131,7 @@
     const globalChatEl = document.getElementById("globalChat");
     const invEl = document.getElementById("invCount");
 
-    let myId = null;
+    let myId = "solo";
     let players = new Map();
     let tiles = new Map();
     let globalMessages = [];
@@ -142,25 +142,22 @@
     let isHoldingStick = false;
     let lastMoveTime = 0;
     let playerName = "";
+    let isMultiplayer = true;
     const seed = Math.random() * 1000;
 
     const ws = new WebSocket('wss://' + window.location.host + '/ws');
     ws.onopen = () => {
-      console.log("WebSocket connected");
+      isMultiplayer = true;
     };
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
-      console.log("Received message:", data);
       if (data.type === 'init') {
         myId = data.id;
-        console.log("My ID:", myId);
         Object.entries(data.players).forEach(([id, player]) => {
           players.set(id, player);
-          console.log("Player added:", id, player);
         });
         Object.entries(data.tiles).forEach(([key, value]) => {
           tiles.set(key, value);
-          console.log("Tile added:", key, value);
         });
         needsRedraw = true;
       } else if (data.type === 'batch') {
@@ -169,23 +166,19 @@
           if (update.type === 'join') {
             players.set(update.id, update.player);
             playersChanged = true;
-            console.log("Player joined:", update.id, update.player);
           } else if (update.type === 'updatePlayer') {
             const prevPlayer = players.get(update.id);
             players.set(update.id, update.player);
             if (prevPlayer && (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y)) {
               playersChanged = true;
             }
-            console.log("Player updated:", update.id, update.player);
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
             gridCache = null;
-            console.log("Tile updated:", update.x, update.y, update.value);
           } else if (update.type === 'leave') {
             players.delete(update.id);
             messages.delete(update.id);
             playersChanged = true;
-            console.log("Player left:", update.id);
           } else if (update.type === 'chat') {
             const { id, text, timestamp } = update;
             const player = players.get(id);
@@ -213,10 +206,10 @@
       }
     };
     ws.onclose = () => {
-      console.log("WebSocket disconnected");
+      isMultiplayer = false;
     };
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
+    ws.onerror = () => {
+      isMultiplayer = false;
     };
 
     function Noise() {
@@ -251,7 +244,6 @@
         let val = perlin.noise(x * scale + seed, y * scale + seed, 0);
         let cellValue = (val + 1) / 2 < 0.6 ? 0 : 1;
         tiles.set(key, cellValue);
-        console.log("Generated cell:", key, cellValue);
       }
       return tiles.get(key);
     }
@@ -289,8 +281,15 @@
       lastMoveTime = now;
       const nextPos = path.shift();
       if (getCell(nextPos.x, nextPos.y) === 0) {
-        ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
-        needsRedraw = true;
+        const me = players.get(myId);
+        if (me) {
+          me.x = nextPos.x;
+          me.y = nextPos.y;
+          if (isMultiplayer) {
+            ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
+          }
+          needsRedraw = true;
+        }
       } else {
         path = [];
       }
@@ -322,7 +321,6 @@
         const offscreenCtx = offscreenCanvas.getContext('2d');
         offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
         offscreenCtx.lineWidth = 1;
-        let hasTiles = false;
         for (let ty = 0; ty < GRID_SIZE; ty++) {
           for (let tx = 0; tx < GRID_SIZE; tx++) {
             const wx = sx + tx, wy = sy + ty;
@@ -331,11 +329,9 @@
             if (getCell(wx, wy) === 1) {
               offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
               offscreenCtx.fillRect(xPx + 2, yPx + 2, CELL_PX - 4, CELL_PX - 4);
-              hasTiles = true;
             }
           }
         }
-        if (!hasTiles) console.log("No tiles to draw in grid");
         gridCache = { key: cacheKey, canvas: offscreenCanvas };
       }
       ctx.drawImage(gridCache.canvas, 0, 0);
@@ -343,10 +339,7 @@
 
     function draw() {
       const me = players.get(myId);
-      if (!me) {
-        console.log("Player not found, cannot draw");
-        return;
-      }
+      if (!me) return;
       ctx.clearRect(0, 0, CANVAS_PX, CANVAS_PX);
       const sx = me.x - Math.floor(GRID_SIZE / 2);
       const sy = me.y - Math.floor(GRID_SIZE / 2);
@@ -418,7 +411,26 @@
     function startGame() {
       playerName = document.getElementById('nameInput').value.trim();
       if (playerName) {
-        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
+        let x = 0, y = 0;
+        if (getCell(x, y) === 1) {
+          let found = false;
+          for (let r = 1; r < 100 && !found; r++) {
+            for (let dy = -r; dy <= r && !found; dy++) {
+              for (let dx = -r; dx <= r; dx++) {
+                if ((Math.abs(dx) === r || Math.abs(dy) === r) && getCell(x + dx, y + dy) === 0) {
+                  x += dx;
+                  y += dy;
+                  found = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        players.set(myId, { x, y, color: "#FF5555", name: playerName, isHoldingStick: false });
+        if (isMultiplayer) {
+          ws.send(JSON.stringify({ type: 'setName', name: playerName }));
+        }
         document.getElementById('login').style.display = 'none';
         document.getElementById('game').style.display = 'block';
         needsRedraw = true;
@@ -442,7 +454,27 @@
     document.getElementById('sendChat').addEventListener('click', () => {
       const text = chatInput.value.trim();
       if (text) {
-        ws.send(JSON.stringify({ type: 'chat', text }));
+        const timestamp = Date.now();
+        if (isMultiplayer) {
+          ws.send(JSON.stringify({ type: 'chat', text }));
+        } else {
+          globalMessages.push({ id: myId, name: playerName, text, timestamp });
+          updateGlobalChat();
+          setTimeout(() => {
+            globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+            updateGlobalChat();
+          }, MESSAGE_LIFETIME);
+          if (!messages.has(myId)) messages.set(myId, []);
+          messages.get(myId).push({ text, timestamp });
+          setTimeout(() => {
+            const playerMessages = messages.get(myId);
+            if (playerMessages) {
+              const index = playerMessages.findIndex(m => m.timestamp === timestamp);
+              if (index !== -1) playerMessages.splice(index, 1);
+              if (playerMessages.length === 0) messages.delete(myId);
+            }
+          }, CHAT_MESSAGE_LIFETIME);
+        }
         chatInput.value = '';
       }
     });
@@ -451,7 +483,27 @@
       if (e.key === 'Enter') {
         const text = chatInput.value.trim();
         if (text) {
-          ws.send(JSON.stringify({ type: 'chat', text }));
+          const timestamp = Date.now();
+          if (isMultiplayer) {
+            ws.send(JSON.stringify({ type: 'chat', text }));
+          } else {
+            globalMessages.push({ id: myId, name: playerName, text, timestamp });
+            updateGlobalChat();
+            setTimeout(() => {
+              globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+              updateGlobalChat();
+            }, MESSAGE_LIFETIME);
+            if (!messages.has(myId)) messages.set(myId, []);
+            messages.get(myId).push({ text, timestamp });
+            setTimeout(() => {
+              const playerMessages = messages.get(myId);
+              if (playerMessages) {
+                const index = playerMessages.findIndex(m => m.timestamp === timestamp);
+                if (index !== -1) playerMessages.splice(index, 1);
+                if (playerMessages.length === 0) messages.delete(myId);
+              }
+            }, CHAT_MESSAGE_LIFETIME);
+          }
           chatInput.value = '';
         }
       }
@@ -468,8 +520,14 @@
     invEl.addEventListener('click', () => {
       isHoldingStick = !isHoldingStick;
       invEl.classList.toggle('selected', isHoldingStick);
-      ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick }));
-      needsRedraw = true;
+      const me = players.get(myId);
+      if (me) {
+        me.isHoldingStick = isHoldingStick;
+        if (isMultiplayer) {
+          ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick }));
+        }
+        needsRedraw = true;
+      }
     });
 
     canvas.onclick = canvasClick;
