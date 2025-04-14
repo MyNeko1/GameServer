@@ -2,7 +2,8 @@ const express = require('express');
 const WebSocket = require('ws');
 const path = require('path');
 const app = express();
-const server = app.listen(process.env.PORT || 3000);
+const port = process.env.PORT || 10000;
+const server = app.listen(port);
 const wss = new WebSocket.Server({ 
   server,
   path: '/ws',
@@ -116,15 +117,20 @@ setInterval(() => {
   if (!updatesBuffer.length) return;
   const updates = updatesBuffer.splice(0, updatesBuffer.length);
   updateCache.clear();
-  const groupedUpdates = new Map();
-  updates.forEach(update => groupedUpdates.set(JSON.stringify({ type: update.type, id: update.id, x: update.x, y: message.x }), update));
-  const deduplicatedUpdates = Array.from(groupedUpdates.values());
   const playerUpdates = new Map();
-  deduplicatedUpdates.forEach(update => {
-    if (update.type === 'updatePlayer') playerUpdates.set(update.id, update);
+  updates.forEach(update => {
+    if (update.type === 'updatePlayer') {
+      if (playerUpdates.has(update.id)) {
+        const existing = playerUpdates.get(update.id);
+        existing.player = update.player;
+      } else {
+        playerUpdates.set(update.id, update);
+      }
+    } else {
+      playerUpdates.set(updates.length, update);
+    }
   });
-  const finalUpdates = deduplicatedUpdates.filter(update => update.type !== 'updatePlayer');
-  playerUpdates.forEach(update => finalUpdates.push(update));
+  const finalUpdates = Array.from(playerUpdates.values());
 
   wss.clients.forEach(client => {
     if (client.readyState !== WebSocket.OPEN) return;
