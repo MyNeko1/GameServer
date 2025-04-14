@@ -89,17 +89,6 @@
     #game {
       display: none;
     }
-    #status {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 14px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 5px;
-      border: 1px solid white;
-      border-radius: 5px;
-    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
@@ -124,7 +113,6 @@
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="global-chat" id="globalChat"></div>
-    <div id="status">Подключение...</div>
   </div>
   <script>
     const GRID_SIZE = 15;
@@ -142,9 +130,8 @@
     const chatInput = document.getElementById("chatInput");
     const globalChatEl = document.getElementById("globalChat");
     const invEl = document.getElementById("invCount");
-    const statusEl = document.getElementById("status");
 
-    let myId = "solo";
+    let myId = null;
     let players = new Map();
     let tiles = new Map();
     let globalMessages = [];
@@ -155,13 +142,19 @@
     let isHoldingStick = false;
     let lastMoveTime = 0;
     let playerName = "";
-    let isMultiplayer = false;
+    let lastSx = null;
+    let lastSy = null;
     const seed = Math.random() * 1000;
 
-    const ws = new WebSocket('wss://' + window.location.host + '/ws');
+    let ws = new WebSocket('wss://' + window.location.host + '/ws');
     ws.onopen = () => {
-      isMultiplayer = true;
-      statusEl.textContent = "Мультиплеер: Подключено";
+      if (playerName) {
+        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('game').style.display = 'block';
+        needsRedraw = true;
+        gameLoop();
+      }
     };
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
@@ -214,18 +207,19 @@
                 if (playerMessages.length === 0) messages.delete(id);
               }
             }, CHAT_MESSAGE_LIFETIME);
+            needsRedraw = true;
           }
         });
         if (playersChanged) needsRedraw = true;
       }
     };
     ws.onclose = () => {
-      isMultiplayer = false;
-      statusEl.textContent = "Мультиплеер: Отключено (Одиночный режим)";
+      setTimeout(() => {
+        ws = new WebSocket('wss://' + window.location.host + '/ws');
+      }, 1000);
     };
     ws.onerror = () => {
-      isMultiplayer = false;
-      statusEl.textContent = "Мультиплеер: Ошибка (Одиночный режим)";
+      ws.close();
     };
 
     function Noise() {
@@ -301,9 +295,7 @@
         if (me) {
           me.x = nextPos.x;
           me.y = nextPos.y;
-          if (isMultiplayer) {
-            ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
-          }
+          ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
           needsRedraw = true;
         }
       } else {
@@ -329,27 +321,30 @@
     }
 
     function drawGrid(sx, sy) {
-      const cacheKey = `${sx},${sy}`;
-      if (!gridCache || gridCache.key !== cacheKey) {
-        const offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = CANVAS_PX;
-        offscreenCanvas.height = CANVAS_PX;
-        const offscreenCtx = offscreenCanvas.getContext('2d');
-        offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
-        offscreenCtx.lineWidth = 1;
-        for (let ty = 0; ty < GRID_SIZE; ty++) {
-          for (let tx = 0; tx < GRID_SIZE; tx++) {
-            const wx = sx + tx, wy = sy + ty;
-            const xPx = tx * CELL_PX, yPx = ty * CELL_PX;
-            offscreenCtx.strokeRect(xPx, yPx, CELL_PX, CELL_PX);
-            if (getCell(wx, wy) === 1) {
-              offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
-              offscreenCtx.fillRect(xPx + 2, yPx + 2, CELL_PX - 4, CELL_PX - 4);
-            }
+      if (gridCache && lastSx === sx && lastSy === sy) {
+        ctx.drawImage(gridCache.canvas, 0, 0);
+        return;
+      }
+      const offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = CANVAS_PX;
+      offscreenCanvas.height = CANVAS_PX;
+      const offscreenCtx = offscreenCanvas.getContext('2d');
+      offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+      offscreenCtx.lineWidth = 1;
+      for (let ty = 0; ty < GRID_SIZE; ty++) {
+        for (let tx = 0; tx < GRID_SIZE; tx++) {
+          const wx = sx + tx, wy = sy + ty;
+          const xPx = tx * CELL_PX, yPx = ty * CELL_PX;
+          offscreenCtx.strokeRect(xPx, yPx, CELL_PX, CELL_PX);
+          if (getCell(wx, wy) === 1) {
+            offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            offscreenCtx.fillRect(xPx + 2, yPx + 2, CELL_PX - 4, CELL_PX - 4);
           }
         }
-        gridCache = { key: cacheKey, canvas: offscreenCanvas };
       }
+      gridCache = { canvas: offscreenCanvas };
+      lastSx = sx;
+      lastSy = sy;
       ctx.drawImage(gridCache.canvas, 0, 0);
     }
 
@@ -426,27 +421,8 @@
 
     function startGame() {
       playerName = document.getElementById('nameInput').value.trim();
-      if (playerName) {
-        let x = 0, y = 0;
-        if (getCell(x, y) === 1) {
-          let found = false;
-          for (let r = 1; r < 100 && !found; r++) {
-            for (let dy = -r; dy <= r && !found; dy++) {
-              for (let dx = -r; dx <= r; dx++) {
-                if ((Math.abs(dx) === r || Math.abs(dy) === r) && getCell(x + dx, y + dy) === 0) {
-                  x += dx;
-                  y += dy;
-                  found = true;
-                  break;
-                }
-              }
-            }
-          }
-        }
-        players.set(myId, { x, y, color: "#FF5555", name: playerName, isHoldingStick: false });
-        if (isMultiplayer) {
-          ws.send(JSON.stringify({ type: 'setName', name: playerName }));
-        }
+      if (playerName && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
         document.getElementById('login').style.display = 'none';
         document.getElementById('game').style.display = 'block';
         needsRedraw = true;
@@ -470,28 +446,9 @@
     document.getElementById('sendChat').addEventListener('click', () => {
       const text = chatInput.value.trim();
       if (text) {
-        const timestamp = Date.now();
-        if (isMultiplayer) {
-          ws.send(JSON.stringify({ type: 'chat', text }));
-        } else {
-          globalMessages.push({ id: myId, name: playerName, text, timestamp });
-          updateGlobalChat();
-          setTimeout(() => {
-            globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
-            updateGlobalChat();
-          }, MESSAGE_LIFETIME);
-          if (!messages.has(myId)) messages.set(myId, []);
-          messages.get(myId).push({ text, timestamp });
-          setTimeout(() => {
-            const playerMessages = messages.get(myId);
-            if (playerMessages) {
-              const index = playerMessages.findIndex(m => m.timestamp === timestamp);
-              if (index !== -1) playerMessages.splice(index, 1);
-              if (playerMessages.length === 0) messages.delete(myId);
-            }
-          }, CHAT_MESSAGE_LIFETIME);
-        }
+        ws.send(JSON.stringify({ type: 'chat', text }));
         chatInput.value = '';
+        needsRedraw = true;
       }
     });
 
@@ -499,28 +456,9 @@
       if (e.key === 'Enter') {
         const text = chatInput.value.trim();
         if (text) {
-          const timestamp = Date.now();
-          if (isMultiplayer) {
-            ws.send(JSON.stringify({ type: 'chat', text }));
-          } else {
-            globalMessages.push({ id: myId, name: playerName, text, timestamp });
-            updateGlobalChat();
-            setTimeout(() => {
-              globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
-              updateGlobalChat();
-            }, MESSAGE_LIFETIME);
-            if (!messages.has(myId)) messages.set(myId, []);
-            messages.get(myId).push({ text, timestamp });
-            setTimeout(() => {
-              const playerMessages = messages.get(myId);
-              if (playerMessages) {
-                const index = playerMessages.findIndex(m => m.timestamp === timestamp);
-                if (index !== -1) playerMessages.splice(index, 1);
-                if (playerMessages.length === 0) messages.delete(myId);
-              }
-            }, CHAT_MESSAGE_LIFETIME);
-          }
+          ws.send(JSON.stringify({ type: 'chat', text }));
           chatInput.value = '';
+          needsRedraw = true;
         }
       }
     });
@@ -539,9 +477,7 @@
       const me = players.get(myId);
       if (me) {
         me.isHoldingStick = isHoldingStick;
-        if (isMultiplayer) {
-          ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick }));
-        }
+        ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick }));
         needsRedraw = true;
       }
     });
