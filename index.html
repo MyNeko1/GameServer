@@ -6,7 +6,7 @@
   <style>
     body {
       background: #000;
-      color: #fff;
+      color: white;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -17,33 +17,25 @@
       font-family: monospace;
     }
     canvas {
-      border: 1px solid #fff;
+      border: 1px solid white;
       touch-action: none;
       box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
     }
-    .stats {
+    .inv {
       position: absolute;
       top: 10px;
       left: 10px;
-      font-size: 14px;
+      font-size: 16px;
       background: rgba(0, 0, 0, 0.7);
       padding: 5px;
-      border: 1px solid #fff;
+      border: 1px solid white;
       border-radius: 5px;
+      cursor: pointer;
     }
-    #login, #deviceSelect {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: #333;
-      padding: 20px;
-      border: 1px solid #fff;
-      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
-      text-align: center;
+    .inv.selected {
+      border-color: yellow;
+      background: rgba(255, 255, 255, 0.4);
     }
-    #deviceSelect { display: none; }
-    #game { display: none; }
     .chat {
       position: absolute;
       bottom: 70px;
@@ -54,8 +46,8 @@
     }
     #chatInput {
       background: #333;
-      color: #fff;
-      border: 1px solid #fff;
+      color: white;
+      border: 1px solid white;
       padding: 5px;
       font-size: 14px;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
@@ -63,8 +55,8 @@
     }
     #sendChat {
       background: #333;
-      color: #fff;
-      border: 1px solid #fff;
+      color: white;
+      border: 1px solid white;
       padding: 5px 10px;
       cursor: pointer;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
@@ -76,306 +68,91 @@
       width: 200px;
       height: 200px;
       background: rgba(0, 0, 0, 0.7);
-      border: 1px solid #fff;
+      border: 1px solid white;
       border-radius: 5px;
       padding: 5px;
       overflow-y: auto;
       font-size: 12px;
       display: block;
     }
-    .global-chat-message {
-      margin-bottom: 5px;
-      word-wrap: break-word;
-    }
-    .player-list {
-      position: absolute;
-      top: 220px;
-      right: 10px;
-      width: 200px;
-      background: rgba(0, 0, 0, 0.7);
-      border: 1px solid #fff;
-      border-radius: 5px;
-      padding: 5px;
-      font-size: 12px;
-      display: block;
-    }
-    .player-list-item { margin-bottom: 3px; }
-    .inventory {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 10px;
-    }
-    .inventory-slot {
-      width: 50px;
-      height: 50px;
-      background: rgba(255, 255, 255, 0.2);
-      border: 2px solid #fff;
-      border-radius: 5px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-size: 12px;
-      text-align: center;
-      cursor: pointer;
-      position: relative;
-    }
-    .inventory-slot.selected {
-      border-color: yellow;
-      background: rgba(255, 255, 255, 0.4);
-    }
-    .inventory-slot .count {
-      position: absolute;
-      bottom: 2px;
-      right: 2px;
-      font-size: 10px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 2px;
-      border-radius: 3px;
-    }
-    .spawn-button {
-      position: absolute;
-      bottom: 10px;
-      right: 10px;
-      background: #333;
-      color: #fff;
-      border: 1px solid #fff;
-      padding: 5px 10px;
-      cursor: pointer;
-      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
-      z-index: 10;
-    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
-      .inventory-slot { width: 40px; height: 40px; font-size: 10px; }
-      .inventory-slot .count { font-size: 8px; }
-      .chat { bottom: 70px; }
-      .inventory { bottom: 10px; }
+      .chat { bottom: 50px; }
       .global-chat { width: 150px; height: 150px; font-size: 10px; }
-      .player-list { width: 150px; font-size: 10px; top: 170px; }
-      .spawn-button { bottom: 60px; right: 10px; }
     }
     @media (min-width: 601px) {
-      .chat { bottom: 100px; }
-      .inventory { bottom: 40px; }
-      .spawn-button { bottom: 40px; right: 10px; }
+      .chat { bottom: 70px; }
     }
   </style>
 </head>
 <body>
-  <div id="login">
-    <input type="text" id="nameInput" placeholder="как звать путник?" maxlength="10">
-    <button onclick="proceedToDeviceSelect()">играть</button>
+  <canvas id="gameCanvas"></canvas>
+  <div class="inv" id="invCount">Палка</div>
+  <div class="chat">
+    <input type="text" id="chatInput" placeholder="Начать базарить" maxlength="50">
+    <button id="sendChat">Отправить</button>
   </div>
-  <div id="deviceSelect">
-    <p>Ты с чем сидишь?</p>
-    <button onclick="selectDevice('pc')">ПК</button>
-    <button onclick="selectDevice('mobile')">Мобила</button>
-  </div>
-  <div id="game">
-    <canvas id="gameCanvas"></canvas>
-    <div class="stats" id="stats">Здоровье: 100</div>
-    <div class="chat">
-      <input type="text" id="chatInput" placeholder="начать базарить" maxlength="50">
-      <button id="sendChat">ГАФ</button>
-    </div>
-    <div class="global-chat" id="globalChat"></div>
-    <div class="player-list" id="playerList">Игроки:</div>
-    <div class="inventory" id="inventory"></div>
-    <button class="spawn-button" id="spawnButton">Спавн</button>
-  </div>
-  <script src="/items.js"></script>
+  <div class="global-chat" id="globalChat"></div>
   <script>
-    // Константы
     const GRID_SIZE = 15;
-    const MAX_ARROWS = 50;
-    const MESSAGE_LIFETIME = 30000;
-    const CHAT_MESSAGE_LIFETIME = 10000;
-    const ARROW_SPEED = 200; // Интервал обновления стрел в миллисекундах
-    const MOVE_COOLDOWN = 250; // Фиксированный интервал движения
+    const CELL_PX = 30;
+    const CANVAS_PX = GRID_SIZE * CELL_PX;
+    const MESSAGE_LIFETIME = 10000;
+    const MOVE_COOLDOWN = 250;
 
-    // DOM-элементы (кэшируем)
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d", { alpha: false });
     ctx.imageSmoothingEnabled = true;
-    const statsEl = document.getElementById("stats");
+    canvas.width = CANVAS_PX;
+    canvas.height = CANVAS_PX;
     const chatInput = document.getElementById("chatInput");
     const globalChatEl = document.getElementById("globalChat");
-    const playerListEl = document.getElementById("playerList");
-    const inventoryEl = document.getElementById("inventory");
-    const spawnButton = document.getElementById("spawnButton");
+    const invEl = document.getElementById("invCount");
 
-    // Глобальные переменные
-    let deviceType = null;
-    let canvasPx = 0;
-    let cellPx = 0;
-    const tiles = new Map();
-    const players = new Map();
-    const messages = new Map();
+    let px = 0, py = 0;
+    let tiles = new Map();
     let globalMessages = [];
-    const arrows = [];
-    let myId = null;
-    let selectedSlot = null;
-    let inventory = getItems();
     let path = [];
     let needsRedraw = false;
     let gridCache = null;
+    let isHoldingStick = false;
     let lastMoveTime = 0;
-    let lastUpdateTime = 0;
-    let lastArrowUpdate = 0;
-    let isGameLoopRunning = false;
-    let spawnPosition = { x: 0, y: 0 };
-    let playerPositionsCache = new Map();
-    let statsCache = '';
-    let playerRenderCache = new Map();
-    let messageRenderCache = new Map();
-    let inventorySlots = [];
+    const seed = Math.random() * 1000;
 
-    const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
-    ws.onopen = () => {};
-    ws.onmessage = (message) => {
-      const data = JSON.parse(message.data);
-      if (data.type === 'init') {
-        myId = data.id;
-        Object.entries(data.players).forEach(([id, player]) => {
-          players.set(id, player);
-          playerPositionsCache.set(id, { x: player.x, y: player.y });
-          playerRenderCache.delete(id); // Сбрасываем кэш отрисовки
-        });
-        Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
-        inventory[0].count = players.get(myId).blocks || 0;
-        const me = players.get(myId);
-        spawnPosition = findNearestSpawn(me.x, me.y);
-        updatePlayerList();
-        needsRedraw = true;
-      } else if (data.type === 'batch') {
-        let playersChanged = false;
-        let tilesChanged = false;
-        data.updates.forEach((update) => {
-          if (update.type === 'join') {
-            players.set(update.id, update.player);
-            playerPositionsCache.set(update.id, { x: update.player.x, y: update.player.y });
-            playerRenderCache.delete(update.id);
-            playersChanged = true;
-          } else if (update.type === 'updatePlayer') {
-            const prevPos = playerPositionsCache.get(update.id);
-            players.set(update.id, update.player);
-            playerPositionsCache.set(update.id, { x: update.player.x, y: update.player.y });
-            if (update.id === myId) inventory[0].count = update.player.blocks || 0;
-            if (prevPos.x !== update.player.x || prevPos.y !== update.player.y) {
-              playersChanged = true;
-              playerRenderCache.delete(update.id);
-            }
-          } else if (update.type === 'updateTile') {
-            tiles.set(update.x + "," + update.y, update.value);
-            gridCache = null;
-            tilesChanged = true;
-          } else if (update.type === 'leave') {
-            players.delete(update.id);
-            messages.delete(update.id);
-            playerPositionsCache.delete(update.id);
-            playerRenderCache.delete(update.id);
-            messageRenderCache.delete(update.id);
-            playersChanged = true;
-          } else if (update.type === 'chat') {
-            const { id, text, timestamp } = update;
-            const player = players.get(id);
-            if (player) {
-              globalMessages.push({ id, name: player.name, text, timestamp });
-              updateGlobalChat();
-              setTimeout(() => {
-                globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
-                updateGlobalChat();
-              }, MESSAGE_LIFETIME);
-            }
-            if (!messages.has(id)) messages.set(id, []);
-            messages.get(id).push({ text, timestamp });
-            messageRenderCache.delete(id);
-            setTimeout(() => {
-              const playerMessages = messages.get(id);
-              if (playerMessages) {
-                const index = playerMessages.findIndex(m => m.timestamp === timestamp);
-                if (index !== -1) playerMessages.splice(index, 1);
-                if (playerMessages.length === 0) messages.delete(id);
-                messageRenderCache.delete(id);
-              }
-            }, CHAT_MESSAGE_LIFETIME);
-          } else if (update.type === 'arrow') {
-            if (arrows.length < MAX_ARROWS) {
-              arrows.push({
-                x: update.x,
-                y: update.y,
-                targetX: update.targetX,
-                targetY: update.targetY,
-                startTime: Date.now(),
-                shooterId: update.shooterId,
-                currentX: update.x,
-                currentY: update.y,
-                path: calculatePath(update.x, update.y, update.targetX, update.targetY)
-              });
-            }
-          }
-        });
-        if (playersChanged || tilesChanged) needsRedraw = true;
-      }
+    function Noise() {
+      this.p = new Array(512);
+      this.perm = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
+      for (let i = 0; i < 256; i++) this.p[256 + i] = this.p[i] = this.perm[i];
+    }
+    Noise.prototype.noise = function(x, y, z) {
+      let p = this.p, X = Math.floor(x) & 255, Y = Math.floor(y) & 255, Z = Math.floor(z) & 255;
+      x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+      let u = fade(x), v = fade(y), w = fade(z);
+      let A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z, B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
+      return lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)), lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))), lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)), lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))));
     };
-    ws.onclose = () => {};
-
-    function proceedToDeviceSelect() {
-      const name = document.getElementById('nameInput').value.trim();
-      if (name) {
-        ws.send(JSON.stringify({ type: 'setName', name }));
-        document.getElementById('login').style.display = 'none';
-        document.getElementById('deviceSelect').style.display = 'block';
-      }
+    function fade(t) {
+      return t * t * t * (t * (t * 6 - 15) + 10);
     }
-
-    function findNearestSpawn(startX, startY) {
-      let spawn = { x: startX, y: startY };
-      if (getCell(spawn.x, spawn.y) === 1) {
-        let found = false;
-        for (let r = 1; r < 100 && !found; r++) {
-          for (let dy = -r; dy <= r && !found; dy++) {
-            for (let dx = -r; dx <= r; dx++) {
-              if ((Math.abs(dx) === r || Math.abs(dy) === r) && getCell(startX + dx, startY + dy) === 0) {
-                spawn = { x: startX + dx, y: startY + dy };
-                found = true;
-                break;
-              }
-            }
-          }
-        }
-      }
-      return spawn;
+    function lerp(t, a, b) {
+      return a + t * (b - a);
     }
-
-    function selectDevice(type) {
-      deviceType = type;
-      canvasPx = type === 'pc' ? 600 : 450;
-      cellPx = canvasPx / GRID_SIZE;
-      canvas.width = canvasPx;
-      canvas.height = canvasPx;
-      document.getElementById('deviceSelect').style.display = 'none';
-      document.getElementById('game').style.display = 'block';
-      const me = players.get(myId);
-      if (me) spawnPosition = findNearestSpawn(me.x, me.y);
-      renderInventory();
-      needsRedraw = true;
-      if (!isGameLoopRunning) {
-        isGameLoopRunning = true;
-        gameLoop();
-      }
+    function grad(h, x, y, z) {
+      let u = h < 8 ? x : y;
+      let v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+      return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
     }
-
-    function nearby(x1, y1, x2, y2, range = 1) {
-      return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range && (x1 !== x2 || y1 !== y2);
-    }
+    let perlin = new Noise();
 
     function getCell(x, y) {
-      return tiles.get(x + "," + y) || 0;
+      let key = x + "," + y;
+      if (!tiles.has(key)) {
+        let scale = 0.2;
+        let val = perlin.noise(x * scale + seed, y * scale + seed, 0);
+        tiles.set(key, (val + 1) / 2 < 0.6 ? 0 : 1);
+      }
+      return tiles.get(key);
     }
 
     function findPath(startX, startY, targetX, targetY) {
@@ -405,114 +182,38 @@
     }
 
     function moveAlongPath() {
-      const me = players.get(myId);
-      if (!me || !path.length) return;
+      if (!path.length) return;
       const now = Date.now();
       if (now - lastMoveTime < MOVE_COOLDOWN) return;
       lastMoveTime = now;
       const nextPos = path.shift();
       if (getCell(nextPos.x, nextPos.y) === 0) {
-        ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
+        px = nextPos.x;
+        py = nextPos.y;
+        gridCache = null;
         needsRedraw = true;
       } else {
         path = [];
       }
     }
 
-    function calculatePath(startX, startY, targetX, targetY) {
-      const path = [];
-      const dx = targetX - startX, dy = targetY - startY;
-      const steps = Math.max(Math.abs(dx), Math.abs(dy));
-      if (!steps) return path;
-      const xStep = dx / steps, yStep = dy / steps;
-      let x = startX, y = startY;
-      for (let i = 0; i < steps; i++) {
-        x += xStep;
-        y += yStep;
-        path.push({ x: Math.round(x), y: Math.round(y) });
-      }
-      return path;
-    }
-
-    function updateArrows() {
-      const me = players.get(myId);
-      if (!me) return;
-      const now = Date.now();
-      if (now - lastArrowUpdate < ARROW_SPEED) return;
-      lastArrowUpdate = now;
-      let arrowsChanged = false;
-      arrows.forEach((arrow, index) => {
-        const elapsed = (now - arrow.startTime) / 1000;
-        if (elapsed > 10 || !arrow.path.length) {
-          arrows.splice(index, 1);
-          arrowsChanged = true;
-          return;
-        }
-        const nextPos = arrow.path.shift();
-        arrow.currentX = nextPos.x;
-        arrow.currentY = nextPos.y;
-        if (tiles.get(arrow.currentX + "," + arrow.currentY) === 1) {
-          arrows.splice(index, 1);
-          arrowsChanged = true;
-          return;
-        }
-        for (const [id, player] of players) {
-          if (id === arrow.shooterId) continue;
-          if (Math.abs(player.x - arrow.currentX) <= 0.5 && Math.abs(player.y - arrow.currentY) <= 0.5) {
-            ws.send(JSON.stringify({ type: 'damage', targetId: id, damage: 10 }));
-            arrows.splice(index, 1);
-            arrowsChanged = true;
-            break;
-          }
-        }
-      });
-      if (arrowsChanged) needsRedraw = true;
-    }
-
-    function updateStats() {
-      const me = players.get(myId);
-      if (!me) return;
-      const newStats = `Здоровье: ${me.hp}`;
-      if (newStats !== statsCache) {
-        statsCache = newStats;
-        statsEl.innerHTML = statsCache;
-      }
-    }
-
-    function wrapText(text, maxWidth) {
-      const words = text.split('');
-      const lines = [];
-      let currentLine = '';
-      for (const char of words) {
-        const testLine = currentLine + char;
-        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-          lines.push(currentLine);
-          currentLine = char;
-        } else {
-          currentLine = testLine;
-        }
-      }
-      if (currentLine) lines.push(currentLine);
-      return lines;
-    }
-
     function drawGrid(sx, sy) {
       const cacheKey = `${sx},${sy}`;
       if (!gridCache || gridCache.key !== cacheKey) {
         const offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = canvasPx;
-        offscreenCanvas.height = canvasPx;
+        offscreenCanvas.width = CANVAS_PX;
+        offscreenCanvas.height = CANVAS_PX;
         const offscreenCtx = offscreenCanvas.getContext('2d');
         offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
         offscreenCtx.lineWidth = 1;
         for (let ty = 0; ty < GRID_SIZE; ty++) {
           for (let tx = 0; tx < GRID_SIZE; tx++) {
             const wx = sx + tx, wy = sy + ty;
-            const xPx = tx * cellPx, yPx = ty * cellPx;
-            offscreenCtx.strokeRect(xPx, yPx, cellPx, cellPx);
-            if (tiles.get(wx + "," + wy) === 1) {
+            const xPx = tx * CELL_PX, yPx = ty * CELL_PX;
+            offscreenCtx.strokeRect(xPx, yPx, CELL_PX, CELL_PX);
+            if (getCell(wx, wy) === 1) {
               offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
-              offscreenCtx.fillRect(xPx + 2, yPx + 2, cellPx - 4, cellPx - 4);
+              offscreenCtx.fillRect(xPx + 2, yPx + 2, CELL_PX - 4, CELL_PX - 4);
             }
           }
         }
@@ -522,95 +223,21 @@
     }
 
     function draw() {
-      const me = players.get(myId);
-      if (!me) return;
-      ctx.clearRect(0, 0, canvasPx, canvasPx);
-      const sx = me.x - Math.floor(GRID_SIZE / 2);
-      const sy = me.y - Math.floor(GRID_SIZE / 2);
+      ctx.clearRect(0, 0, CANVAS_PX, CANVAS_PX);
+      const sx = px - Math.floor(GRID_SIZE / 2);
+      const sy = py - Math.floor(GRID_SIZE / 2);
       drawGrid(sx, sy);
-
-      for (const arrow of arrows) {
-        const px1 = (arrow.currentX - sx) * cellPx + cellPx / 2;
-        const py1 = (arrow.currentY - sy) * cellPx + cellPx / 2;
-        let px2 = px1, py2 = py1;
-        if (arrow.path.length) {
-          const nextPos = arrow.path[0];
-          px2 = (nextPos.x - sx) * cellPx + cellPx / 2;
-          py2 = (nextPos.y - sy) * cellPx + cellPx / 2;
-        }
-        if (px1 >= 0 && px1 <= canvasPx && py1 >= 0 && py1 <= canvasPx) {
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(px1, py1);
-          ctx.lineTo(px2, py2);
-          ctx.stroke();
-        }
+      ctx.fillStyle = "white";
+      ctx.font = "26px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const playerX = Math.floor(GRID_SIZE / 2) * CELL_PX + CELL_PX / 2;
+      const playerY = Math.floor(GRID_SIZE / 2) * CELL_PX + CELL_PX / 2;
+      ctx.fillText("@", playerX, playerY);
+      if (isHoldingStick) {
+        ctx.fillStyle = "brown";
+        ctx.fillRect(playerX + 10, playerY - 5, 15, 5);
       }
-
-      for (const [id, player] of players) {
-        const cacheKey = `${id}:${player.x}:${player.y}:${player.hp}:${player.name}`;
-        let renderData = playerRenderCache.get(id);
-        if (!renderData || renderData.key !== cacheKey) {
-          const px = (player.x - sx) * cellPx + cellPx / 2;
-          const py = (player.y - sy) * cellPx + cellPx / 2;
-          renderData = { key: cacheKey, px, py, visible: px >= 0 && px <= canvasPx && py >= 0 && py <= canvasPx };
-          playerRenderCache.set(id, renderData);
-        }
-        if (!renderData.visible) continue;
-        ctx.fillStyle = player.color;
-        ctx.font = "26px monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("@", renderData.px, renderData.py);
-        if (player.name) {
-          ctx.font = "12px monospace";
-          ctx.fillStyle = "white";
-          ctx.fillText(player.name, renderData.px, renderData.py - 20);
-          ctx.fillText(`Здоровье: ${player.hp}`, renderData.px, renderData.py - 35);
-        }
-      }
-
-      for (const [id, player] of players) {
-        const playerRender = playerRenderCache.get(id);
-        if (!playerRender || !playerRender.visible || !messages.has(id)) continue;
-        const playerMessages = messages.get(id);
-        const cacheKey = `${id}:${playerMessages.map(m => m.text + m.timestamp).join(':')}`;
-        let messageData = messageRenderCache.get(id);
-        if (!messageData || messageData.key !== cacheKey) {
-          const maxWidth = cellPx * 3;
-          let totalHeight = 0;
-          const lineHeight = 15;
-          const boxes = [];
-          for (const msg of playerMessages) totalHeight += wrapText(msg.text, maxWidth).length * lineHeight + 10;
-          let currentY = playerRender.py - 50 - totalHeight;
-          for (const msg of playerMessages) {
-            const lines = wrapText(msg.text, maxWidth);
-            const boxHeight = lines.length * lineHeight + 10;
-            const boxWidth = maxWidth + 10;
-            boxes.push({ lines, boxWidth, boxHeight, currentY });
-            currentY += boxHeight + 5;
-          }
-          messageData = { key: cacheKey, boxes };
-          messageRenderCache.set(id, messageData);
-        }
-        messageData.boxes.forEach(({ lines, boxWidth, boxHeight, currentY }) => {
-          ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 1;
-          ctx.fillRect(playerRender.px - boxWidth / 2, currentY, boxWidth, boxHeight);
-          ctx.strokeRect(playerRender.px - boxWidth / 2, currentY, boxWidth, boxHeight);
-          ctx.font = "12px monospace";
-          ctx.fillStyle = "white";
-          ctx.textBaseline = "middle";
-          lines.forEach((line, j) => ctx.fillText(line, playerRender.px, currentY + 5 + (j + 0.5) * lineHeight));
-        });
-      }
-
-      inventorySlots.forEach((slot, i) => {
-        const countEl = slot.querySelector('.count');
-        if (countEl) countEl.innerHTML = inventory[i].count || 0;
-      });
     }
 
     let chatUpdatePending = false;
@@ -618,68 +245,34 @@
       if (chatUpdatePending) return;
       chatUpdatePending = true;
       requestAnimationFrame(() => {
-        globalChatEl.innerHTML = globalMessages.map(msg => `${msg.name}: ${msg.text}`).join('<br>');
+        globalChatEl.innerHTML = globalMessages.map(msg => `${msg.text}`).join('<br>');
         globalChatEl.scrollTop = globalChatEl.scrollHeight;
         chatUpdatePending = false;
       });
     }
 
-    let playerListUpdatePending = false;
-    function updatePlayerList() {
-      if (playerListUpdatePending) return;
-      playerListUpdatePending = true;
-      requestAnimationFrame(() => {
-        const playerNames = Array.from(players.values())
-          .filter(player => player.name && player.name.trim() !== '')
-          .map(player => player.name);
-        playerListEl.innerHTML = playerNames.length ? `Игроки:<br>${playerNames.join('<br>')}` : 'Игроки:<br>(нет игроков)';
-        playerListUpdatePending = false;
-      });
-    }
-
-    function renderInventory() {
-      inventory.forEach((item, index) => {
-        const slot = document.createElement('div');
-        slot.className = 'inventory-slot';
-        slot.dataset.slot = index;
-        slot.innerHTML = `<span>${item.name}</span>` + (item.count !== undefined ? `<span class="count">${item.count}</span>` : '');
-        slot.addEventListener('click', () => {
-          if (selectedSlot === index) {
-            selectedSlot = null;
-            slot.classList.remove('selected');
-          } else {
-            selectedSlot = index;
-            inventorySlots.forEach(s => s.classList.remove('selected'));
-            slot.classList.add('selected');
-          }
-        });
-        inventoryEl.appendChild(slot);
-        inventorySlots.push(slot);
-      });
-    }
-
-    function canvasMouseDown(e) {
-      const me = players.get(myId);
-      if (!me) return;
+    function canvasClick(e) {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      const tx = Math.floor(x / cellPx);
-      const ty = Math.floor(y / cellPx);
-      const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
-      const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
-      if (selectedSlot === null) {
-        path = findPath(me.x, me.y, targetX, targetY);
-      } else {
-        inventory[selectedSlot].action(me, targetX, targetY, ws, nearby, getCell, inventory, players, myId);
-      }
+      const tx = Math.floor(x / CELL_PX);
+      const ty = Math.floor(y / CELL_PX);
+      const targetX = px - Math.floor(GRID_SIZE / 2) + tx;
+      const targetY = py - Math.floor(GRID_SIZE / 2) + ty;
+      path = findPath(px, py, targetX, targetY);
     }
 
     document.getElementById('sendChat').addEventListener('click', () => {
       const text = chatInput.value.trim();
       if (text) {
-        ws.send(JSON.stringify({ type: 'chat', text }));
+        const timestamp = Date.now();
+        globalMessages.push({ text: `Игрок: ${text}`, timestamp });
+        updateGlobalChat();
         chatInput.value = '';
+        setTimeout(() => {
+          globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+          updateGlobalChat();
+        }, MESSAGE_LIFETIME);
       }
     });
 
@@ -687,65 +280,70 @@
       if (e.key === 'Enter') {
         const text = chatInput.value.trim();
         if (text) {
-          ws.send(JSON.stringify({ type: 'chat', text }));
+          const timestamp = Date.now();
+          globalMessages.push({ text: `Игрок: ${text}`, timestamp });
+          updateGlobalChat();
           chatInput.value = '';
+          setTimeout(() => {
+            globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+            updateGlobalChat();
+          }, MESSAGE_LIFETIME);
         }
       }
-    });
-
-    spawnButton.addEventListener('click', () => {
-      const me = players.get(myId);
-      if (!me) return;
-      const spawn = findNearestSpawn(spawnPosition.x, spawnPosition.y);
-      ws.send(JSON.stringify({ type: 'move', x: spawn.x, y: spawn.y }));
-      path = [];
-      needsRedraw = true;
     });
 
     document.addEventListener('keydown', (e) => {
       const activeElement = document.activeElement;
-      if (activeElement.tagName === 'INPUT' && (activeElement.id === 'nameInput' || activeElement.id === 'chatInput')) return;
+      if (activeElement.tagName === 'INPUT' && activeElement.id === 'chatInput') return;
       if (e.key === 'q' || e.key === 'Q') {
         chatInput.focus();
       }
-      if (['1', '2', '3', '4', '5'].includes(e.key)) {
-        e.preventDefault();
-        const index = parseInt(e.key) - 1;
-        if (selectedSlot === index) {
-          selectedSlot = null;
-          inventorySlots[index].classList.remove('selected');
-        } else {
-          selectedSlot = index;
-          inventorySlots.forEach(slot => slot.classList.remove('selected'));
-          inventorySlots[index].classList.add('selected');
-        }
-      }
     });
 
-    canvas.onmousedown = canvasMouseDown;
+    invEl.addEventListener('click', () => {
+      isHoldingStick = !isHoldingStick;
+      invEl.classList.toggle('selected', isHoldingStick);
+      needsRedraw = true;
+    });
+
+    canvas.onclick = canvasClick;
     canvas.ontouchstart = (e) => {
       e.preventDefault();
       const touch = e.touches[0];
-      canvas.dispatchEvent(new MouseEvent("mousedown", {
+      const click = new MouseEvent("click", {
         clientX: touch.clientX,
         clientY: touch.clientY
-      }));
+      });
+      canvas.dispatchEvent(click);
     };
 
-    function gameLoop(timestamp) {
-      if (!lastUpdateTime) lastUpdateTime = timestamp;
-      const delta = timestamp - lastUpdateTime;
-      lastUpdateTime = timestamp;
-
+    function gameLoop() {
       moveAlongPath();
-      updateArrows();
-      updateStats();
       if (needsRedraw) {
         draw();
         needsRedraw = false;
       }
       requestAnimationFrame(gameLoop);
     }
+
+    if (getCell(px, py) === 1) {
+      let found = false;
+      for (let r = 1; r < 100 && !found; r++) {
+        for (let dy = -r; dy <= r && !found; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            if ((Math.abs(dx) === r || Math.abs(dy) === r) && getCell(px + dx, py + dy) === 0) {
+              px += dx;
+              py += dy;
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    needsRedraw = true;
+    gameLoop();
   </script>
 </body>
 </html>
