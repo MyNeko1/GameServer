@@ -1,7 +1,5 @@
 const express = require('express');
 const WebSocket = require('ws');
-const { logPlayer } = require('./playersLog');
-const { logMessage } = require('./chatLog');
 const path = require('path');
 const app = express();
 const server = app.listen(process.env.PORT || 3000, () => console.log(`Server on ${process.env.PORT || 3000}`));
@@ -15,7 +13,6 @@ let tiles = [];
 const players = new Map();
 const seed = Math.random() * 1000;
 let updatesBuffer = [];
-const playerPositionsCache = new Map();
 const updateCache = new Map();
 
 function Noise() {
@@ -101,7 +98,6 @@ function respawnPlayer(player) {
       }
     }
   }
-  playerPositionsCache.set(player.id, { x: player.x, y: player.y });
 }
 
 function queueUpdate(message) {
@@ -146,7 +142,7 @@ setInterval(() => {
 wss.on('connection', (ws) => {
   const id = Date.now() + Math.random();
   ws.playerId = id;
-  const player = { x: 0, y: 0, blocks: 0, hp: 100, name: '', color: getUniqueColor(), id };
+  const player = { x: 0, y: 0, hp: 100, name: '', color: getUniqueColor(), id, isHoldingStick: false };
   respawnPlayer(player);
   players.set(id, player);
 
@@ -164,61 +160,26 @@ wss.on('connection', (ws) => {
     const player = players.get(id);
     if (data.type === 'setName') {
       player.name = data.name;
-      logPlayer(id, player.name, Date.now());
       queueUpdate({ type: 'updatePlayer', id, player });
     } else if (data.type === 'move') {
       const { x, y } = data;
-      const prevPos = playerPositionsCache.get(id);
       if (nearby(player.x, player.y, x, y, 1) && getCell(x, y) === 0) {
         player.x = x;
         player.y = y;
-        if (prevPos.x !== x || prevPos.y !== y) {
-          playerPositionsCache.set(id, { x, y });
-          queueUpdate({ type: 'updatePlayer', id, player });
-        }
-      }
-    } else if (data.type === 'break') {
-      const { x, y } = data;
-      if (nearby(player.x, player.y, x, y, 1) && getCell(x, y) === 1) {
-        setCell(x, y, 0);
-        player.blocks++;
-        queueUpdate({ type: 'updateTile', x, y, value: 0 });
-        queueUpdate({ type: 'updatePlayer', id, player });
-      }
-    } else if (data.type === 'build') {
-      const { x, y } = data;
-      if (nearby(player.x, player.y, x, y, 2) && getCell(x, y) === 0 && player.blocks > 0) {
-        setCell(x, y, 1);
-        player.blocks--;
-        queueUpdate({ type: 'updateTile', x, y, value: 1 });
         queueUpdate({ type: 'updatePlayer', id, player });
       }
     } else if (data.type === 'chat') {
       const timestamp = Date.now();
-      logMessage(id, player.name, data.text, timestamp);
       queueUpdate({ type: 'chat', id, text: data.text, timestamp });
-    } else if (data.type === 'damage') {
-      const target = players.get(data.targetId);
-      if (target) {
-        target.hp = Math.max(0, target.hp - data.damage);
-        if (target.hp === 0) {
-          target.hp = 100;
-          respawnPlayer(target);
-        }
-        queueUpdate({ type: 'updatePlayer', id: data.targetId, player: target });
-      }
-    } else if (data.type === 'heal') {
-      player.hp = Math.min(100, player.hp + data.amount);
+    } else if (data.type === 'updateStick') {
+      player.isHoldingStick = data.isHoldingStick;
       queueUpdate({ type: 'updatePlayer', id, player });
-    } else if (data.type === 'arrow') {
-      queueUpdate({ type: 'arrow', x: data.x, y: data.y, targetX: data.targetX, targetY: data.targetY, shooterId: data.shooterId });
     }
   });
 
   ws.on('close', () => {
     usedColors.delete(player.color);
     players.delete(id);
-    playerPositionsCache.delete(id);
     queueUpdate({ type: 'leave', id });
   });
 });
