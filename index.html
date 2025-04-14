@@ -49,7 +49,7 @@
       color: white;
       border: 1px solid white;
       padding: 5px;
-       font-size: 14px;
+      font-size: 14px;
       box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
       width: 200px;
     }
@@ -114,7 +114,9 @@
     </div>
     <div class="global-chat" id="globalChat"></div>
   </div>
-  <script>
+  <script type="module">
+    import items from './items.js';
+
     const GRID_SIZE = 15;
     const CELL_PX = 30;
     const CANVAS_PX = GRID_SIZE * CELL_PX;
@@ -139,12 +141,10 @@
     let path = [];
     let needsRedraw = false;
     let gridCache = null;
-    let isHoldingStick = false;
     let lastMoveTime = 0;
     let playerName = "";
     let lastSx = null;
     let lastSy = null;
-    let isMoving = false;
     const seed = Math.random() * 1000;
 
     let ws = new WebSocket('wss://' + window.location.host + '/ws');
@@ -178,11 +178,8 @@
             const prevPlayer = players.get(update.id);
             if (prevPlayer) {
               players.set(update.id, update.player);
-              if (update.id === myId) {
-                isMoving = false;
-                if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
-                  path = [];
-                }
+              if (update.id === myId && (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y)) {
+                path = [];
               }
               if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
                 playersChanged = true;
@@ -297,7 +294,7 @@
     }
 
     function moveAlongPath() {
-      if (!path.length || isMoving) return;
+      if (!path.length) return;
       const now = Date.now();
       if (now - lastMoveTime < MOVE_COOLDOWN) return;
       lastMoveTime = now;
@@ -305,7 +302,6 @@
       if (getCell(nextPos.x, nextPos.y) === 0) {
         const me = players.get(myId);
         if (me) {
-          isMoving = true;
           ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
           needsRedraw = true;
         }
@@ -483,12 +479,12 @@
     });
 
     invEl.addEventListener('click', () => {
-      isHoldingStick = !isHoldingStick;
-      invEl.classList.toggle('selected', isHoldingStick);
+      const newState = items.stick.toggle();
+      invEl.classList.toggle('selected', newState);
       const me = players.get(myId);
       if (me) {
-        me.isHoldingStick = isHoldingStick;
-        ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick }));
+        me.isHoldingStick = newState;
+        ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick: newState }));
         needsRedraw = true;
       }
     });
