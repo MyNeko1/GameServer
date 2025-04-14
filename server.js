@@ -26,7 +26,9 @@ Noise.prototype.noise = function(x, y, z) {
   x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
   const u = fade(x), v = fade(y), w = fade(z);
   const A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z, B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
-  return lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)), lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))), lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)), lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))));
+  return lerp(w, lerp(v, lerp(u, grad(p[AA
+
+], x, y, z), grad(p[BA], x - 1, y, z)), lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))), lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)), lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))));
 };
 
 function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
@@ -45,7 +47,6 @@ function getCell(x, y) {
     const scale = 0.2;
     const val = perlin.noise(x * scale + seed, y * scale + seed, 0);
     tiles[x][y] = (val + 1) / 2 < 0.6 ? 0 : 1;
-    console.log("Server generated cell:", x, y, tiles[x][y]);
   }
   return tiles[x][y];
 }
@@ -69,7 +70,6 @@ function generateInitialTiles() {
       getCell(x, y);
     }
   }
-  console.log("Initial tiles generated");
 }
 
 generateInitialTiles();
@@ -104,7 +104,6 @@ function respawnPlayer(player) {
       }
     }
   }
-  console.log("Player respawned at:", player.x, player.y);
 }
 
 function queueUpdate(message) {
