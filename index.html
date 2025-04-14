@@ -103,7 +103,7 @@
 <body>
   <div id="login">
     <input type="text" id="nameInput" placeholder="как звать путник?" maxlength="10">
-    <button onclick="startGame()">играть</button>
+    <button id="startButton">играть</button>
   </div>
   <div id="game">
     <canvas id="gameCanvas"></canvas>
@@ -132,6 +132,8 @@
     const chatInput = document.getElementById("chatInput");
     const globalChatEl = document.getElementById("globalChat");
     const invEl = document.getElementById("invCount");
+    const startButton = document.getElementById("startButton");
+    const nameInput = document.getElementById("nameInput");
 
     let myId = null;
     let players = new Map();
@@ -148,15 +150,14 @@
     const seed = Math.random() * 1000;
 
     let ws = new WebSocket('wss://' + window.location.host + '/ws');
+
     ws.onopen = () => {
+      console.log("WebSocket connection opened");
       if (playerName) {
-        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
-        document.getElementById('login').style.display = 'none';
-        document.getElementById('game').style.display = 'block';
-        needsRedraw = true;
-        gameLoop();
+        sendName();
       }
     };
+
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
       if (data.type === 'init') {
@@ -223,13 +224,28 @@
       }
     };
     ws.onclose = () => {
+      console.log("WebSocket connection closed, reconnecting...");
       setTimeout(() => {
         ws = new WebSocket('wss://' + window.location.host + '/ws');
       }, 1000);
     };
-    ws.onerror = () => {
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
       ws.close();
     };
+
+    function sendName() {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('game').style.display = 'block';
+        needsRedraw = true;
+        gameLoop();
+      } else {
+        console.log("WebSocket not open yet, retrying in 100ms...");
+        setTimeout(sendName, 100);
+      }
+    }
 
     function Noise() {
       this.p = new Array(512);
@@ -427,28 +443,23 @@
     }
 
     function startGame() {
-      playerName = document.getElementById('nameInput').value.trim();
-      if (playerName && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'setName', name: playerName }));
-        document.getElementById('login').style.display = 'none';
-        document.getElementById('game').style.display = 'block';
-        needsRedraw = true;
-        gameLoop();
+      console.log("startGame called");
+      playerName = nameInput.value.trim();
+      if (!playerName) {
+        console.log("No name provided");
+        return;
       }
+      console.log("Player name:", playerName);
+      sendName();
     }
 
-    function canvasClick(e) {
-      const me = players.get(myId);
-      if (!me) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const tx = Math.floor(x / CELL_PX);
-      const ty = Math.floor(y / CELL_PX);
-      const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
-      const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
-      path = findPath(me.x, me.y, targetX, targetY);
-    }
+    startButton.addEventListener('click', startGame);
+
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        startGame();
+      }
+    });
 
     document.getElementById('sendChat').addEventListener('click', () => {
       const text = chatInput.value.trim();
@@ -499,6 +510,19 @@
       });
       canvas.dispatchEvent(click);
     };
+
+    function canvasClick(e) {
+      const me = players.get(myId);
+      if (!me) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const tx = Math.floor(x / CELL_PX);
+      const ty = Math.floor(y / CELL_PX);
+      const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
+      const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
+      path = findPath(me.x, me.y, targetX, targetY);
+    }
 
     function gameLoop() {
       moveAlongPath();
