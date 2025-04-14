@@ -144,16 +144,24 @@
     let playerName = "";
     const seed = Math.random() * 1000;
 
-    const ws = new WebSocket('wss://' + window.location.hostname + '/ws');
-    ws.onopen = () => {};
+    const ws = new WebSocket('wss://' + window.location.host + '/ws');
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+    };
     ws.onmessage = (message) => {
       const data = JSON.parse(message.data);
+      console.log("Received message:", data);
       if (data.type === 'init') {
         myId = data.id;
+        console.log("My ID:", myId);
         Object.entries(data.players).forEach(([id, player]) => {
           players.set(id, player);
+          console.log("Player added:", id, player);
         });
-        Object.entries(data.tiles).forEach(([key, value]) => tiles.set(key, value));
+        Object.entries(data.tiles).forEach(([key, value]) => {
+          tiles.set(key, value);
+          console.log("Tile added:", key, value);
+        });
         needsRedraw = true;
       } else if (data.type === 'batch') {
         let playersChanged = false;
@@ -161,19 +169,23 @@
           if (update.type === 'join') {
             players.set(update.id, update.player);
             playersChanged = true;
+            console.log("Player joined:", update.id, update.player);
           } else if (update.type === 'updatePlayer') {
             const prevPlayer = players.get(update.id);
             players.set(update.id, update.player);
             if (prevPlayer && (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y)) {
               playersChanged = true;
             }
+            console.log("Player updated:", update.id, update.player);
           } else if (update.type === 'updateTile') {
             tiles.set(update.x + "," + update.y, update.value);
             gridCache = null;
+            console.log("Tile updated:", update.x, update.y, update.value);
           } else if (update.type === 'leave') {
             players.delete(update.id);
             messages.delete(update.id);
             playersChanged = true;
+            console.log("Player left:", update.id);
           } else if (update.type === 'chat') {
             const { id, text, timestamp } = update;
             const player = players.get(id);
@@ -200,7 +212,12 @@
         if (playersChanged) needsRedraw = true;
       }
     };
-    ws.onclose = () => {};
+    ws.onclose = () => {
+      console.log("WebSocket disconnected");
+    };
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
 
     function Noise() {
       this.p = new Array(512);
@@ -232,7 +249,9 @@
       if (!tiles.has(key)) {
         let scale = 0.2;
         let val = perlin.noise(x * scale + seed, y * scale + seed, 0);
-        tiles.set(key, (val + 1) / 2 < 0.6 ? 0 : 1);
+        let cellValue = (val + 1) / 2 < 0.6 ? 0 : 1;
+        tiles.set(key, cellValue);
+        console.log("Generated cell:", key, cellValue);
       }
       return tiles.get(key);
     }
@@ -303,6 +322,7 @@
         const offscreenCtx = offscreenCanvas.getContext('2d');
         offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
         offscreenCtx.lineWidth = 1;
+        let hasTiles = false;
         for (let ty = 0; ty < GRID_SIZE; ty++) {
           for (let tx = 0; tx < GRID_SIZE; tx++) {
             const wx = sx + tx, wy = sy + ty;
@@ -311,9 +331,11 @@
             if (getCell(wx, wy) === 1) {
               offscreenCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
               offscreenCtx.fillRect(xPx + 2, yPx + 2, CELL_PX - 4, CELL_PX - 4);
+              hasTiles = true;
             }
           }
         }
+        if (!hasTiles) console.log("No tiles to draw in grid");
         gridCache = { key: cacheKey, canvas: offscreenCanvas };
       }
       ctx.drawImage(gridCache.canvas, 0, 0);
@@ -321,7 +343,10 @@
 
     function draw() {
       const me = players.get(myId);
-      if (!me) return;
+      if (!me) {
+        console.log("Player not found, cannot draw");
+        return;
+      }
       ctx.clearRect(0, 0, CANVAS_PX, CANVAS_PX);
       const sx = me.x - Math.floor(GRID_SIZE / 2);
       const sy = me.y - Math.floor(GRID_SIZE / 2);
@@ -397,6 +422,7 @@
         document.getElementById('login').style.display = 'none';
         document.getElementById('game').style.display = 'block';
         needsRedraw = true;
+        gameLoop();
       }
     }
 
