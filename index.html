@@ -147,7 +147,7 @@
     let playerName = "";
     let lastSx = null;
     let lastSy = null;
-    let lastRequestedPos = null; // Для проверки ожидаемой позиции
+    let lastRequestedPos = null;
     const seed = Math.random() * 1000;
 
     let ws = new WebSocket('wss://' + window.location.host + '/ws');
@@ -181,14 +181,22 @@
             if (prevPlayer) {
               players.set(update.id, update.player);
               if (update.id === myId) {
-                // Проверяем, совпадает ли новая позиция с ожидаемой
                 if (lastRequestedPos && update.player.x === lastRequestedPos.x && update.player.y === lastRequestedPos.y) {
                   console.log("Position confirmed, continuing path:", path);
-                  lastRequestedPos = null; // Сбрасываем после подтверждения
-                } else if (lastRequestedPos) {
-                  console.log("Position mismatch, clearing path. Expected:", lastRequestedPos, "Got:", { x: update.player.x, y: update.player.y });
-                  path = []; // Сбрасываем путь, если сервер вернул неожиданную позицию
                   lastRequestedPos = null;
+                } else if (path.length > 0) {
+                  // Проверяем, является ли новая позиция частью пути
+                  const nextPosInPath = path.find(pos => pos.x === update.player.x && pos.y === update.player.y);
+                  if (!nextPosInPath) {
+                    console.log("Position not in path, recalculating. Current pos:", { x: update.player.x, y: update.player.y }, "Path:", path);
+                    // Пересчитываем путь от текущей позиции до цели
+                    const targetPos = path.length > 0 ? path[path.length - 1] : null;
+                    if (targetPos) {
+                      path = findPath(update.player.x, update.player.y, targetPos.x, targetPos.y);
+                      console.log("Recalculated path:", path);
+                    }
+                    lastRequestedPos = null;
+                  }
                 }
               }
               if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
@@ -293,29 +301,82 @@
     }
 
     function findPath(startX, startY, targetX, targetY) {
-      const queue = [{ x: startX, y: startY, path: [] }];
-      const visited = new Set([startX + "," + startY]);
+      const openSet = new Map();
+      const closedSet = new Set();
+      const startKey = `${startX},${startY}`;
+      const targetKey = `${targetX},${targetY}`;
+
+      const gScore = new Map(); // Стоимость пути от начала до текущей точки
+      const fScore = new Map(); // Оценка полного пути через текущую точку
+      const cameFrom = new Map(); // Для восстановления пути
+
+      gScore.set(startKey, 0);
+      fScore.set(startKey, heuristic(startX, startY, targetX, targetY));
+      openSet.set(startKey, { x: startX, y: startY });
+
       const directions = [
-        { dx: 0, dy: -1 }, { dx: 0, dy: 1 },
-        { dx: -1, dy: 0 }, { dx: 1, dy: 0 },
-        { dx: -1, dy: -1 }, { dx: 1, dy: -1 },
-        { dx: -1, dy: 1 }, { dx: 1, dy: 1 }
+        { dx: 0, dy: -1, cost: 1 }, { dx: 0, dy: 1, cost: 1 },
+        { dx: -1, dy: 0, cost: 1 }, { dx: 1, dy: 0, cost: 1 },
+        { dx: -1, dy: -1, cost: 1.4 }, { dx: 1, dy: -1, cost: 1.4 },
+        { dx: -1, dy: 1, cost: 1.4 }, { dx: 1, dy: 1, cost: 1.4 }
       ];
-      let iterations = 0;
-      const maxIterations = 500;
-      while (queue.length && iterations++ < maxIterations) {
-        const { x, y, path } = queue.shift();
-        if (x === targetX && y === targetY) return path.concat({ x, y });
-        for (const { dx, dy } of directions) {
-          const nextX = x + dx, nextY = y + dy;
-          const key = nextX + "," + nextY;
-          if (!visited.has(key) && getCell(nextX, nextY) !== 1) {
-            visited.add(key);
-            queue.push({ x: nextX, y: nextY, path: path.concat({ x, y }) });
+
+      while (openSet.size > 0) {
+        let currentKey = null;
+        let lowestFScore = Infinity;
+        for (const [key, node] of openSet) {
+          const f = fScore.get(key);
+          if (f < lowestFScore) {
+            lowestFScore = f;
+            currentKey = key;
           }
         }
+
+        const current = openSet.get(currentKey);
+        const { x: currentX, y: currentY } = current;
+
+        if (currentKey === target V) {
+          // Восстанавливаем путь
+          const path = [];
+          let tempKey = targetKey;
+          while (tempKey !== startKey) {
+            const [x, y] = tempKey.split(',').map(Number);
+            path.push({ x, y });
+            tempKey = cameFrom.get(tempKey);
+          }
+          return path.reverse();
+        }
+
+        openSet.delete(currentKey);
+        closedSet.add(currentKey);
+
+        for (const { dx, dy, cost } of directions) {
+          const nextX = currentX + dx;
+          const nextY = currentY + dy;
+          const nextKey = `${nextX},${nextY}`;
+
+          if (closedSet.has(nextKey) || getCell(nextX, nextY) === 1) continue;
+
+          const tentativeGScore = (gScore.get(currentKey) || 0) + cost;
+
+          if (!openSet.has(nextKey)) {
+            openSet.set(nextKey, { x: nextX, y: nextY });
+          } else if (tentativeGScore >= (gScore.get(nextKey) || Infinity)) {
+            continue;
+          }
+
+          cameFrom.set(nextKey, currentKey);
+          gScore.set(nextKey, tentativeGScore);
+          fScore.set(nextKey, tentativeGScore + heuristic(nextX, nextY, targetX, targetY));
+        }
       }
-      return [];
+
+      return []; // Путь не найден
+    }
+
+    function heuristic(x1, y1, x2, y2) {
+      // Манхэттенское расстояние для эвристики
+      return Math.abs(x1 - x2) + Math.abs(y1 - y2);
     }
 
     function moveAlongPath() {
@@ -327,14 +388,21 @@
       if (getCell(nextPos.x, nextPos.y) === 0) {
         const me = players.get(myId);
         if (me) {
-          lastRequestedPos = { x: nextPos.x, y: nextPos.y }; // Сохраняем ожидаемую позицию
+          lastRequestedPos = { x: nextPos.x, y: nextPos.y };
           console.log("Moving to:", lastRequestedPos, "Remaining path:", path);
           ws.send(JSON.stringify({ type: 'move', x: nextPos.x, y: nextPos.y }));
           needsRedraw = true;
         }
       } else {
-        console.log("Obstacle at:", nextPos, "Clearing path");
-        path = [];
+        console.log("Obstacle at:", nextPos, "Recalculating path");
+        const me = players.get(myId);
+        const targetPos = path.length > 0 ? path[path.length - 1] : null;
+        if (targetPos) {
+          path = findPath(me.x, me.y, targetPos.x, targetPos.y);
+          console.log("Recalculated path:", path);
+        } else {
+          path = [];
+        }
       }
     }
 
@@ -367,7 +435,7 @@
       offscreenCtx.strokeStyle = "rgba(255, 255, 255, 0.3)";
       offscreenCtx.lineWidth = 1;
       for (let ty = 0; ty < GRID_SIZE; ty++) {
-        for (let tx = 0; tx < GRID_SIZE; tx++) {
+        for (let tx = 0; tx < GRID_SIZE; ty++) {
           const wx = sx + tx, wy = sy + ty;
           const xPx = tx * CELL_PX, yPx = ty * CELL_PX;
           offscreenCtx.strokeRect(xPx, yPx, CELL_PX, CELL_PX);
@@ -533,8 +601,12 @@
       const ty = Math.floor(y / CELL_PX);
       const targetX = me.x - Math.floor(GRID_SIZE / 2) + tx;
       const targetY = me.y - Math.floor(GRID_SIZE / 2) + ty;
-      path = findPath(me.x, me.y, targetX, targetY);
-      console.log("Path to target:", path);
+      if (getCell(targetX, targetY) === 0) { // Проверяем, что целевая клетка проходима
+        path = findPath(me.x, me.y, targetX, targetY);
+        console.log("Path to target:", path);
+      } else {
+        console.log("Target cell is blocked:", { x: targetX, y: targetY });
+      }
     }
 
     function gameLoop() {
