@@ -89,18 +89,6 @@
     #game {
       display: none;
     }
-    #exitButton {
-      position: absolute;
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #333;
-      color: white;
-      border: 1px solid white;
-      padding: 5px 10px;
-      cursor: pointer;
-      box-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
-    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
@@ -125,7 +113,6 @@
       <button id="sendChat">ГАФ</button>
     </div>
     <div class="global-chat" id="globalChat"></div>
-    <button id="exitButton">Выйти</button>
   </div>
   <script type="module">
     import items from './items.js';
@@ -147,7 +134,6 @@
     const invEl = document.getElementById("invCount");
     const startButton = document.getElementById("startButton");
     const nameInput = document.getElementById("nameInput");
-    const exitButton = document.getElementById("exitButton");
 
     let myId = null;
     let players = new Map();
@@ -164,121 +150,117 @@
     let lastRequestedPos = null;
     const seed = Math.random() * 1000;
 
-    let ws = null;
+    let ws = new WebSocket('wss://' + window.location.host + '/ws');
 
-    function initializeWebSocket() {
-      ws = new WebSocket('wss://' + window.location.host + '/ws');
-      ws.onopen = () => {
-        console.log("WebSocket connection opened");
-        if (playerName) {
-          sendName();
-        }
-      };
+    ws.onopen = () => {
+      console.log("WebSocket connection opened");
+      if (playerName) {
+        sendName();
+      }
+    };
 
-      ws.onmessage = (message) => {
-        const data = JSON.parse(message.data);
-        if (data.type === 'init') {
-          myId = data.id;
-          Object.entries(data.players).forEach(([id, player]) => {
-            players.set(id, player);
-          });
-          Object.entries(data.tiles).forEach(([key, value]) => {
-            tiles.set(key, value);
-          });
-          needsRedraw = true;
-        } else if (data.type === 'batch') {
-          let playersChanged = false;
-          data.updates.forEach((update) => {
-            if (update.type === 'join') {
+    ws.onmessage = (message) => {
+      console.log("Received message from server:", message.data); // Лог для отладки
+      const data = JSON.parse(message.data);
+      if (data.type === 'init') {
+        console.log("Initialization received, myId:", data.id);
+        myId = data.id;
+        Object.entries(data.players).forEach(([id, player]) => {
+          players.set(id, player);
+        });
+        Object.entries(data.tiles).forEach(([key, value]) => {
+          tiles.set(key, value);
+        });
+        needsRedraw = true;
+      } else if (data.type === 'batch') {
+        let playersChanged = false;
+        data.updates.forEach((update) => {
+          if (update.type === 'join') {
+            players.set(update.id, update.player);
+            playersChanged = true;
+          } else if (update.type === 'updatePlayer') {
+            const prevPlayer = players.get(update.id);
+            if (prevPlayer) {
               players.set(update.id, update.player);
-              playersChanged = true;
-            } else if (update.type === 'updatePlayer') {
-              const prevPlayer = players.get(update.id);
-              if (prevPlayer) {
-                players.set(update.id, update.player);
-                if (update.id === myId) {
-                  if (lastRequestedPos && update.player.x === lastRequestedPos.x && update.player.y === lastRequestedPos.y) {
-                    console.log("Position confirmed, continuing path:", path);
-                    lastRequestedPos = null;
-                  } else if (path.length > 0) {
-                    const nextPosInPath = path.find(pos => pos.x === update.player.x && pos.y === update.player.y);
-                    if (!nextPosInPath) {
-                      console.log("Position not in path, recalculating. Current pos:", { x: update.player.x, y: update.player.y }, "Path:", path);
-                      const targetPos = path.length > 0 ? path[path.length - 1] : null;
-                      if (targetPos) {
-                        path = findPath(update.player.x, update.player.y, targetPos.x, targetPos.y);
-                        console.log("Recalculated path:", path);
-                      }
-                      lastRequestedPos = null;
+              if (update.id === myId) {
+                if (lastRequestedPos && update.player.x === lastRequestedPos.x && update.player.y === lastRequestedPos.y) {
+                  console.log("Position confirmed, continuing path:", path);
+                  lastRequestedPos = null;
+                } else if (path.length > 0) {
+                  const nextPosInPath = path.find(pos => pos.x === update.player.x && pos.y === update.player.y);
+                  if (!nextPosInPath) {
+                    console.log("Position not in path, recalculating. Current pos:", { x: update.player.x, y: update.player.y }, "Path:", path);
+                    const targetPos = path.length > 0 ? path[path.length - 1] : null;
+                    if (targetPos) {
+                      path = findPath(update.player.x, update.player.y, targetPos.x, targetPos.y);
+                      console.log("Recalculated path:", path);
                     }
+                    lastRequestedPos = null;
                   }
                 }
-                if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
-                  playersChanged = true;
-                }
               }
-            } else if (update.type === 'updateTile') {
-              tiles.set(update.x + "," + update.y, update.value);
-              gridCache = null;
-            } else if (update.type === 'leave') {
-              players.delete(update.id);
-              messages.delete(update.id);
-              globalMessages = globalMessages.filter(m => m.id !== update.id);
-              updateGlobalChat();
-              playersChanged = true;
-            } else if (update.type === 'chat') {
-              const { id, text, timestamp } = update;
-              if (!players.has(id)) return;
-              const player = players.get(id);
-              if (player) {
-                globalMessages.push({ id, name: player.name, text, timestamp });
-                updateGlobalChat();
-                setTimeout(() => {
-                  globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
-                  updateGlobalChat();
-                }, MESSAGE_LIFETIME);
+              if (prevPlayer.x !== update.player.x || prevPlayer.y !== update.player.y) {
+                playersChanged = true;
               }
-              if (!messages.has(id)) messages.set(id, []);
-              messages.get id).push({ text, timestamp });
-              setTimeout(() => {
-                const playerMessages = messages.get(id);
-                if (playerMessages) {
-                  const index = playerMessages.findIndex(m => m.timestamp === timestamp);
-                  if (index !== -1) playerMessages.splice(index, 1);
-                  if (playerMessages.length === 0) messages.delete(id);
-                }
-              }, CHAT_MESSAGE_LIFETIME);
-              needsRedraw = true;
             }
-          });
-          if (playersChanged) needsRedraw = true;
-        }
-      };
-
-      ws.onclose = () => {
-        console.log("WebSocket connection closed, reconnecting...");
-        setTimeout(() => {
-          initializeWebSocket();
-        }, 1000);
-      };
-
-      ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        ws.close();
-      };
-    }
-
-    initializeWebSocket();
+          } else if (update.type === 'updateTile') {
+            tiles.set(update.x + "," + update.y, update.value);
+            gridCache = null;
+          } else if (update.type === 'leave') {
+            players.delete(update.id);
+            messages.delete(update.id);
+            globalMessages = globalMessages.filter(m => m.id !== update.id);
+            updateGlobalChat();
+            playersChanged = true;
+          } else if (update.type === 'chat') {
+            const { id, text, timestamp } = update;
+            if (!players.has(id)) return;
+            const player = players.get(id);
+            if (player) {
+              globalMessages.push({ id, name: player.name, text, timestamp });
+              updateGlobalChat();
+              setTimeout(() => {
+                globalMessages = globalMessages.filter(m => m.timestamp !== timestamp);
+                updateGlobalChat();
+              }, MESSAGE_LIFETIME);
+            }
+            if (!messages.has(id)) messages.set(id, []);
+            messages.get(id).push({ text, timestamp });
+            setTimeout(() => {
+              const playerMessages = messages.get(id);
+              if (playerMessages) {
+                const index = playerMessages.findIndex(m => m.timestamp === timestamp);
+                if (index !== -1) playerMessages.splice(index, 1);
+                if (playerMessages.length === 0) messages.delete(id);
+              }
+            }, CHAT_MESSAGE_LIFETIME);
+            needsRedraw = true;
+          }
+        });
+        if (playersChanged) needsRedraw = true;
+      }
+    };
+    ws.onclose = () => {
+      console.log("WebSocket connection closed, reconnecting...");
+      setTimeout(() => {
+        ws = new WebSocket('wss://' + window.location.host + '/ws');
+      }, 1000);
+    };
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      ws.close();
+    };
 
     function sendName() {
       if (ws.readyState === WebSocket.OPEN) {
+        console.log("Sending name to server:", playerName);
         ws.send(JSON.stringify({ type: 'setName', name: playerName }));
         document.getElementById('login').style.display = 'none';
         document.getElementById('game').style.display = 'block';
         needsRedraw = true;
         gameLoop();
       } else {
-        console.log("WebSocket not open yet, retrying in 100ms...");
+        console.log("WebSocket not open, waiting...");
         setTimeout(sendName, 100);
       }
     }
@@ -295,7 +277,102 @@
       let A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z, B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
       return lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z), grad(p[BA], x - 1, y, z)), lerp(u, grad(p[AB], x, y - 1, z), grad(p[BB], x - 1, y - 1, z))), lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1), grad(p[BA + 1], x - 1, y, z - 1)), lerp(u, grad(p[AB + 1], x, y - 1, z - 1), grad(p[BB + 1], x - 1, y - 1, z - 1))));
     };
-    ${({t})=>t*t*t*(t*(t*6-15)+10)}function lerp(t,a,b){return a+t*(b-a)}function grad(h,x,y,z){let u=h<8?x:y;let v=h<4?y:(h==12||h==14?x:z);return((h&1)==0?u:-u)+((h&2)==0?v:-v)}let perlin=new Noise;function getCell(x,y){let key=x+","+y;if(!tiles.has(key)){let scale=.2;let val=perlin.noise(x*scale+seed,y*scale+seed,0);let cellValue=(val+1)/2<.6?0:1;tiles.set(key,cellValue)}return tiles.get(key)}function findPath(startX,startY,targetX,targetY){const openSet=new Map;const closedSet=new Set;const startKey=`${startX},${startY}`;const targetKey=`${targetX},${targetY}`;const gScore=new Map;const fScore=new Map;const cameFrom=new Map;gScore.set(startKey,0);fScore.set(startKey,heuristic(startX,startY,targetX,targetY));openSet.set(startKey,{x:startX,y:startY});const directions=[{dx:0,dy:-1,cost:1},{dx:0,dy:1,cost:1},{dx:-1,dy:0,cost:1},{dx:1,dy:0,cost:1},{dx:-1,dy:-1,cost:1.4},{dx:1,dy:-1,cost:1.4},{dx:-1,dy:1,cost:1.4},{dx:1,dy:1,cost:1.4}];while(openSet.size>0){let currentKey=null;let lowestFScore=Infinity;for(const[key,node]of openSet){const f=fScore.get(key);if(f<lowestFScore){lowestFScore=f;currentKey=key}}const current=openSet.get(currentKey);const{x:currentX,y:currentY}=current;if(currentKey===targetKey){const path=[];let tempKey=targetKey;while(tempKey!==startKey){const[x,y]=tempKey.split(',').map(Number);path.push({x,y});tempKey=cameFrom.get(tempKey)}return path.reverse()}openSet.delete(currentKey);closedSet.add(currentKey);for(const{dx,dy,cost}of directions){const nextX=currentX+dx;const nextY=currentY+dy;const nextKey=`${nextX},${nextY}`;if(closedSet.has(nextKey)||getCell(nextX,nextY)===1)continue;const tentativeGScore=(gScore.get(currentKey)||0)+cost;if(!openSet.has(nextKey)){openSet.set(nextKey,{x:nextX,y:nextY})}else if(tentativeGScore>=(gScore.get(nextKey)||Infinity)){continue}cameFrom.set(nextKey,currentKey);gScore.set(nextKey,tentativeGScore);fScore.set(nextKey,tentativeGScore+heuristic(nextX,nextY,targetX,targetY))}}return[]}
+    function fade(t) {
+      return t * t * t * (t * (t * 6 - 15) + 10);
+    }
+    function lerp(t, a, b) {
+      return a + t * (b - a);
+    }
+    function grad(h, x, y, z) {
+      let u = h < 8 ? x : y;
+      let v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+      return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+    }
+    let perlin = new Noise();
+
+    function getCell(x, y) {
+      let key = x + "," + y;
+      if (!tiles.has(key)) {
+        let scale = 0.2;
+        let val = perlin.noise(x * scale + seed, y * scale + seed, 0);
+        let cellValue = (val + 1) / 2 < 0.6 ? 0 : 1;
+        tiles.set(key, cellValue);
+      }
+      return tiles.get(key);
+    }
+
+    function findPath(startX, startY, targetX, targetY) {
+      const openSet = new Map();
+      const closedSet = new Set();
+      const startKey = `${startX},${startY}`;
+      const targetKey = `${targetX},${targetY}`;
+
+      const gScore = new Map();
+      const fScore = new Map();
+      const cameFrom = new Map();
+
+      gScore.set(startKey, 0);
+      fScore.set(startKey, heuristic(startX, startY, targetX, targetY));
+      openSet.set(startKey, { x: startX, y: startY });
+
+      const directions = [
+        { dx: 0, dy: -1, cost: 1 }, { dx: 0, dy: 1, cost: 1 },
+        { dx: -1, dy: 0, cost: 1 }, { dx: 1, dy: 0, cost: 1 },
+        { dx: -1, dy: -1, cost: 1.4 }, { dx: 1, dy: -1, cost: 1.4 },
+        { dx: -1, dy: 1, cost: 1.4 }, { dx: 1, dy: 1, cost: 1.4 }
+      ];
+
+      while (openSet.size > 0) {
+        let currentKey = null;
+        let lowestFScore = Infinity;
+        for (const [key, node] of openSet) {
+          const f = fScore.get(key);
+          if (f < lowestFScore) {
+            lowestFScore = f;
+            currentKey = key;
+          }
+        }
+
+        const current = openSet.get(currentKey);
+        const { x: currentX, y: currentY } = current;
+
+        if (currentKey === targetKey) {
+          const path = [];
+          let tempKey = targetKey;
+          while (tempKey !== startKey) {
+            const [x, y] = tempKey.split(',').map(Number);
+            path.push({ x, y });
+            tempKey = cameFrom.get(tempKey);
+          }
+          return path.reverse();
+        }
+
+        openSet.delete(currentKey);
+        closedSet.add(currentKey);
+
+        for (const { dx, dy, cost } of directions) {
+          const nextX = currentX + dx;
+          const nextY = currentY + dy;
+          const nextKey = `${nextX},${nextY}`;
+
+          if (closedSet.has(nextKey) || getCell(nextX, nextY) === 1) continue;
+
+          const tentativeGScore = (gScore.get(currentKey) || 0) + cost;
+
+          if (!openSet.has(nextKey)) {
+            openSet.set(nextKey, { x: nextX, y: nextY });
+          } else if (tentativeGScore >= (gScore.get(nextKey) || Infinity)) {
+            continue;
+          }
+
+          cameFrom.set(nextKey, currentKey);
+          gScore.set(nextKey, tentativeGScore);
+          fScore.set(nextKey, tentativeGScore + heuristic(nextX, nextY, targetX, targetY));
+        }
+      }
+
+      return [];
+    }
 
     function heuristic(x1, y1, x2, y2) {
       return Math.abs(x1 - x2) + Math.abs(y1 - y2);
@@ -445,47 +522,25 @@
     }
 
     function startGame() {
-      console.log("startGame called");
+      console.log("startGame called"); // Лог для отладки
       playerName = nameInput.value.trim();
+      console.log("Player name entered:", playerName); // Лог для отладки
       if (!playerName) {
-        console.log("No name provided");
+        console.log("No name provided, please enter a name");
+        alert("Пожалуйста, введи имя!"); // Подсказка пользователю
         return;
       }
-      console.log("Player name:", playerName);
       sendName();
     }
 
-    function resetGame() {
-      // Закрываем WebSocket-соединение
-      if (ws) {
-        ws.close();
-      }
-      // Сбрасываем состояние игры
-      myId = null;
-      players.clear();
-      tiles.clear();
-      globalMessages = [];
-      messages.clear();
-      path = [];
-      needsRedraw = false;
-      gridCache = null;
-      lastMoveTime = 0;
-      lastSx = null;
-      lastSy = null;
-      lastRequestedPos = null;
-      chatInput.value = '';
-      globalChatEl.innerHTML = '';
-      // Показываем экран логина, скрываем игру
-      document.getElementById('login').style.display = 'block';
-      document.getElementById('game').style.display = 'none';
-      // Инициализируем новое WebSocket-соединение
-      initializeWebSocket();
-    }
-
-    startButton.onclick = startGame;
+    startButton.addEventListener('click', () => {
+      console.log("Start button clicked"); // Лог для отладки
+      startGame();
+    });
 
     nameInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        console.log("Enter key pressed in name input"); // Лог для отладки
         startGame();
       }
     });
@@ -527,11 +582,6 @@
         ws.send(JSON.stringify({ type: 'updateStick', isHoldingStick: newState }));
         needsRedraw = true;
       }
-    });
-
-    exitButton.addEventListener('click', () => {
-      console.log("Exit button clicked");
-      resetGame();
     });
 
     canvas.onclick = canvasClick;
