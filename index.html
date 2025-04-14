@@ -75,6 +75,20 @@
       font-size: 12px;
       display: block;
     }
+    #login {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: #333;
+      padding: 20px;
+      border: 1px solid white;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+      text-align: center;
+    }
+    #game {
+      display: none;
+    }
     @media (max-width: 600px), (orientation: landscape) {
       #chatInput { width: 150px; font-size: 12px; }
       #sendChat { padding: 5px; font-size: 12px; }
@@ -87,13 +101,19 @@
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
-  <div class="inv" id="invCount">Палка</div>
-  <div class="chat">
-    <input type="text" id="chatInput" placeholder="Начать базарить" maxlength="50">
-    <button id="sendChat">Отправить</button>
+  <div id="login">
+    <input type="text" id="nameInput" placeholder="как звать путник?" maxlength="10">
+    <button onclick="startGame()">играть</button>
   </div>
-  <div class="global-chat" id="globalChat"></div>
+  <div id="game">
+    <canvas id="gameCanvas"></canvas>
+    <div class="inv" id="invCount">Палка</div>
+    <div class="chat">
+      <input type="text" id="chatInput" placeholder="Начать базарить" maxlength="50">
+      <button id="sendChat">ГАФ</button>
+    </div>
+    <div class="global-chat" id="globalChat"></div>
+  </div>
   <script>
     const GRID_SIZE = 15;
     const CELL_PX = 30;
@@ -118,6 +138,7 @@
     let gridCache = null;
     let isHoldingStick = false;
     let lastMoveTime = 0;
+    let playerName = "";
     const seed = Math.random() * 1000;
 
     function Noise() {
@@ -251,6 +272,16 @@
       });
     }
 
+    function startGame() {
+      playerName = document.getElementById('nameInput').value.trim();
+      if (playerName) {
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('game').style.display = 'block';
+        needsRedraw = true;
+        gameLoop();
+      }
+    }
+
     function canvasClick(e) {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -266,7 +297,7 @@
       const text = chatInput.value.trim();
       if (text) {
         const timestamp = Date.now();
-        globalMessages.push({ text: `Игрок: ${text}`, timestamp });
+        globalMessages.push({ text: `${playerName}: ${text}`, timestamp });
         updateGlobalChat();
         chatInput.value = '';
         setTimeout(() => {
@@ -281,7 +312,7 @@
         const text = chatInput.value.trim();
         if (text) {
           const timestamp = Date.now();
-          globalMessages.push({ text: `Игрок: ${text}`, timestamp });
+          globalMessages.push({ text: `${playerName}: ${text}`, timestamp });
           updateGlobalChat();
           chatInput.value = '';
           setTimeout(() => {
@@ -294,7 +325,7 @@
 
     document.addEventListener('keydown', (e) => {
       const activeElement = document.activeElement;
-      if (activeElement.tagName === 'INPUT' && activeElement.id === 'chatInput') return;
+      if (activeElement.tagName === 'INPUT' && (activeElement.id === 'chatInput' || activeElement.id === 'nameInput')) return;
       if (e.key === 'q' || e.key === 'Q') {
         chatInput.focus();
       }
@@ -341,9 +372,6 @@
         }
       }
     }
-
-    needsRedraw = true;
-    gameLoop();
   </script>
 </body>
 </html>
